@@ -25,7 +25,10 @@ pub struct AppState {
 async fn main() {
     dotenvy::dotenv().ok();
 
-    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    // Railway sets DATABASE_URL explicitly to a volume-mounted path; this
+    // default just keeps local/ad-hoc startup from panicking when it's unset.
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "sqlite:///data/blueprint.db".to_string());
     let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
 
     let pool = db::init_pool(&database_url)
