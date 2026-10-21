@@ -82,6 +82,14 @@ pub struct AuthResponse {
     pub user_id: String,
 }
 
+// ---- Chat ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub sender: String,
+    pub text: String,
+}
+
 // ---- Sessions ----
 
 #[derive(Debug, Deserialize)]
