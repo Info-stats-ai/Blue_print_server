@@ -227,7 +227,7 @@ async fn call_anthropic(
 
     let body = json!({
         "model": model,
-        "max_tokens": 512,
+        "max_tokens": 4096,
         "system": system,
         "messages": messages,
     });
@@ -244,18 +244,29 @@ async fn call_anthropic(
         .map_err(|error| format!("request failed: {error}"))?;
 
     let status = response.status();
+    let raw_body = response
+        .text()
+        .await
+        .map_err(|error| format!("failed to read response body: {error}"))?;
+
     if !status.is_success() {
         return Err(format!("API returned {status}"));
     }
 
-    let value: serde_json::Value = response
-        .json()
-        .await
+    let value: serde_json::Value = serde_json::from_str(&raw_body)
         .map_err(|error| format!("invalid response body: {error}"))?;
 
+    // The response's `content` array can include non-text blocks (e.g. `thinking`)
+    // ahead of the text block, so find the first block whose `type` is `text`
+    // rather than assuming `content[0]` is it.
     value
         .get("content")
-        .and_then(|content| content.get(0))
+        .and_then(|content| content.as_array())
+        .and_then(|blocks| {
+            blocks
+                .iter()
+                .find(|block| block.get("type").and_then(|t| t.as_str()) == Some("text"))
+        })
         .and_then(|block| block.get("text"))
         .and_then(|text| text.as_str())
         .map(str::to_string)
