@@ -24,6 +24,15 @@ pub struct AppState {
     pub hub: ws::Hub,
     pub jwt_secret: String,
     pub oauth: oauth::OAuthState,
+    // Shared across every outbound call this server makes (Anthropic,
+    // GitHub, Google) instead of each call site building its own
+    // `reqwest::Client`. A `Client` owns a connection pool; constructing a
+    // fresh one per call throws away keep-alive/TLS-session reuse and pays
+    // a new handshake every single time — at real request volume (every
+    // watcher/blueprint LLM call, every OAuth login) that's a meaningful,
+    // avoidable latency and CPU cost. `Client` is cheap to clone (an `Arc`
+    // internally), so sharing it this way is the documented pattern.
+    pub http_client: reqwest::Client,
 }
 
 #[tokio::main]
@@ -40,11 +49,18 @@ async fn main() {
         .await
         .expect("failed to initialize database");
 
+    let http_client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .build()
+        .expect("failed to build shared http client");
+
     let state = AppState {
         pool,
         hub: ws::Hub::new(),
         jwt_secret,
         oauth: oauth::OAuthState::new(),
+        http_client,
     };
 
     tokio::spawn(checkpoint::run_checkpoint_sweep(state.clone()));

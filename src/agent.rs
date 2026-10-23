@@ -102,7 +102,7 @@ pub async fn handle_mention(state: AppState, session_id: String) {
     println!("agent: replying in session {session_id} using model {model}");
 
     let system = MENTION_SYSTEM_PROMPT_TEMPLATE.replace("{blueprint_content}", &blueprint_content);
-    let text = match call_anthropic(&model, &system, messages).await {
+    let text = match call_anthropic(&state.http_client, &model, &system, messages).await {
         Ok((text, cost)) => {
             state.hub.record_llm_call(&session_id, cost).await;
             text
@@ -175,7 +175,7 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
     let system = BLUEPRINT_SYSTEM_PROMPT_TEMPLATE
         .replace("{participants}", &participant_list)
         .replace("{file_context}", &file_context);
-    match call_anthropic(&model, &system, messages).await {
+    match call_anthropic(&state.http_client, &model, &system, messages).await {
         Ok((content, cost)) => {
             state.hub.record_llm_call(&session_id, cost).await;
             state.hub.set_blueprint(&session_id, content.clone()).await;
@@ -390,7 +390,7 @@ pub async fn check_file_save(
         "File: {path}\n\nDiff of the change (+ added, - removed):\n{diff}\n\nOther synced files referencing these symbols:\n{cross_file}"
     )})];
 
-    let reply = match call_anthropic(&model, &system, messages).await {
+    let reply = match call_anthropic(&state.http_client, &model, &system, messages).await {
         Ok((reply, cost)) => {
             state.hub.record_llm_call(&session_id, cost).await;
             reply
@@ -505,6 +505,7 @@ fn estimate_cost_usd(model: &str, input_tokens: u64, output_tokens: u64) -> f64 
 /// `estimate_cost_usd`), so every caller can feed the session's running
 /// cost metric without duplicating the `usage` parsing.
 async fn call_anthropic(
+    client: &reqwest::Client,
     model: &str,
     system: &str,
     messages: Vec<serde_json::Value>,
@@ -519,7 +520,6 @@ async fn call_anthropic(
         "messages": messages,
     });
 
-    let client = reqwest::Client::new();
     let response = client
         .post(ANTHROPIC_API_URL)
         .header("x-api-key", api_key)

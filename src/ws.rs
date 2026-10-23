@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, broadcast};
 
 use crate::AppState;
@@ -68,13 +68,28 @@ struct SessionChannel {
     // (re)joining client can render "who's working on what" immediately
     // instead of waiting to observe every peer's next `file_open`.
     presence: HashMap<String, String>,
-    // How many chat messages existed the last time each user disconnected —
-    // the input to the Phase 7 async catch-up digest (`catch_up_digest`):
-    // on rejoin, everything in `history` past this index happened while
-    // they were away. A user who's never left has no entry, which
-    // `catch_up_digest` treats as "nothing to catch up on" rather than
-    // "catch up on the whole history."
-    last_seen_history_len: HashMap<String, usize>,
+    // Monotonically increasing count of every chat message ever pushed to
+    // this session, never decremented by `push_chat_message`'s cap-eviction
+    // drain — unlike `history.len()` (capped, and reshuffled by `drain`),
+    // this is a stable counter `last_seen_total_messages` can be compared
+    // against regardless of how much drain has happened since.
+    total_messages: u64,
+    // `total_messages`'s value the last time each user disconnected — the
+    // input to the Phase 7 async catch-up digest (`catch_up_digest`): on
+    // rejoin, `total_messages - this` is how many messages they missed. A
+    // user who's never left has no entry, which `catch_up_digest` treats as
+    // "nothing to catch up on" rather than "catch up on the whole history."
+    // Deliberately *not* a `history` vec index — `history` gets left-drained
+    // once it exceeds `CHAT_HISTORY_CAP`, which would silently invalidate a
+    // stored index into it (the index would land on the wrong message after
+    // a drain shifted everything down), while this counter never does.
+    last_seen_total_messages: HashMap<String, u64>,
+    // Bumped on every meaningful activity (join, chat, save, merge) — the
+    // input to `Hub::evict_idle_sessions`. Without this, `remove_peer` no
+    // longer tearing down an empty channel (needed for Phase 7 resume)
+    // would mean every session ever touched sits in memory forever; this
+    // is what lets genuinely abandoned ones eventually be freed instead.
+    last_activity: Instant,
 }
 
 // Tracks the latest file_save generation per (session_id, path) so the watcher
@@ -145,9 +160,12 @@ impl Hub {
                 replica_ids: HashMap::new(),
                 next_replica_id: clock::ReplicaId::FIRST_COLLAB_ID.as_u16(),
                 presence: HashMap::new(),
-                last_seen_history_len: HashMap::new(),
+                total_messages: 0,
+                last_seen_total_messages: HashMap::new(),
+                last_activity: Instant::now(),
             });
         channel.peers.insert(user_id.to_string());
+        channel.last_activity = Instant::now();
         channel.tx.subscribe()
     }
 
@@ -166,8 +184,8 @@ impl Hub {
             channel.peers.remove(user_id);
             channel.presence.remove(user_id);
             channel
-                .last_seen_history_len
-                .insert(user_id.to_string(), channel.history.len());
+                .last_seen_total_messages
+                .insert(user_id.to_string(), channel.total_messages);
         }
     }
 
@@ -193,6 +211,8 @@ impl Hub {
         let mut map = self.inner.write().await;
         if let Some(channel) = map.get_mut(session_id) {
             channel.history.push(message);
+            channel.total_messages += 1;
+            channel.last_activity = Instant::now();
             let len = channel.history.len();
             if len > CHAT_HISTORY_CAP {
                 channel.history.drain(0..len - CHAT_HISTORY_CAP);
@@ -232,14 +252,20 @@ impl Hub {
     /// version, and moves it to the front of the recency order. A no-op if
     /// the session has no active channel.
     pub async fn save_file(&self, session_id: &str, path: String, content: String) {
+        // Parsed *before* taking the write lock — tree-sitter is a CPU-bound
+        // parse that can take real time on a large file, and holding the
+        // single lock that every session on the server shares while it runs
+        // would stall every other session's unrelated operations behind
+        // this one file's parse. See `apply_buffer_op` for the same fix on
+        // the much hotter per-keystroke path.
+        let new_symbols = symbols::extract_symbols(&path, &content);
         let mut map = self.inner.write().await;
         if let Some(channel) = map.get_mut(session_id) {
-            channel
-                .symbols
-                .insert(path.clone(), symbols::extract_symbols(&path, &content));
+            channel.symbols.insert(path.clone(), new_symbols);
             channel.files.insert(path.clone(), content);
             channel.file_order.retain(|existing| existing != &path);
             channel.file_order.insert(0, path);
+            channel.last_activity = Instant::now();
         }
     }
 
@@ -313,12 +339,19 @@ impl Hub {
 
         let map = self.inner.read().await;
         let channel = map.get(session_id)?;
-        let last_seen = *channel.last_seen_history_len.get(user_id)?;
-        if last_seen >= channel.history.len() {
+        let last_seen = *channel.last_seen_total_messages.get(user_id)?;
+        let count = channel.total_messages.saturating_sub(last_seen);
+        if count == 0 {
             return None;
         }
-        let missed = &channel.history[last_seen..];
-        let count = missed.len();
+        // `count` is how many messages were actually missed, by the stable
+        // counter — but `history` itself is capped and left-drained (see
+        // `push_chat_message`), so if more was missed than the cap retained,
+        // this can only show the tail end that's still in memory. That's an
+        // honest degradation (show what's left of what was missed), not the
+        // silent-wrong-messages bug a drained vec index would produce.
+        let available = (count as usize).min(channel.history.len());
+        let missed = &channel.history[channel.history.len() - available..];
         let recent = missed
             .iter()
             .rev()
@@ -344,14 +377,23 @@ impl Hub {
         files: HashMap<String, String>,
         blueprint: String,
     ) {
+        // Parsed before the lock, same reason as `save_file` — and more
+        // pressing here, since this can be N files' worth of parsing in one
+        // go (a whole checkpoint's snapshot) rather than just one.
+        let parsed: Vec<(String, String, Vec<symbols::Symbol>)> = files
+            .into_iter()
+            .map(|(path, content)| {
+                let path_symbols = symbols::extract_symbols(&path, &content);
+                (path, content, path_symbols)
+            })
+            .collect();
+
         let mut map = self.inner.write().await;
         if let Some(channel) = map.get_mut(session_id)
             && channel.files.is_empty()
         {
-            for (path, content) in files {
-                channel
-                    .symbols
-                    .insert(path.clone(), symbols::extract_symbols(&path, &content));
+            for (path, content, path_symbols) in parsed {
+                channel.symbols.insert(path.clone(), path_symbols);
                 channel.file_order.push(path.clone());
                 channel.files.insert(path, content);
             }
@@ -370,15 +412,16 @@ impl Hub {
     /// buffer for the path, so the next edit re-joins fresh from the
     /// restored text instead of merging against now-stale CRDT history.
     pub async fn restore_file(&self, session_id: &str, path: String, content: String) {
+        // See `save_file` — parsed before the lock, same reason.
+        let new_symbols = symbols::extract_symbols(&path, &content);
         let mut map = self.inner.write().await;
         if let Some(channel) = map.get_mut(session_id) {
             channel.buffers.remove(&path);
-            channel
-                .symbols
-                .insert(path.clone(), symbols::extract_symbols(&path, &content));
+            channel.symbols.insert(path.clone(), new_symbols);
             channel.files.insert(path.clone(), content);
             channel.file_order.retain(|existing| existing != &path);
             channel.file_order.insert(0, path);
+            channel.last_activity = Instant::now();
         }
     }
 
@@ -476,6 +519,43 @@ impl Hub {
             .unwrap_or_default()
     }
 
+    /// Removes every session with zero currently-connected peers whose
+    /// `last_activity` is older than `idle_threshold`, returning the
+    /// evicted session ids (for logging). This is what keeps the Hub's
+    /// memory bounded now that `remove_peer` no longer tears a channel down
+    /// just because it's momentarily empty (needed for Phase 7 resume) —
+    /// without it, every session ever touched across the server's whole
+    /// uptime would accumulate in memory forever. Safe to call alongside
+    /// anything else: a session can only be evicted while it has zero
+    /// peers, so it can never race an active `apply_buffer_op`/chat/save
+    /// call, which always comes from a currently-connected peer. Also
+    /// clears the corresponding metrics/watcher-generation entries so
+    /// *those* maps don't become their own slow leak in parallel.
+    pub async fn evict_idle_sessions(&self, idle_threshold: Duration) -> Vec<String> {
+        let evicted: Vec<String> = {
+            let mut map = self.inner.write().await;
+            let to_evict: Vec<String> = map
+                .iter()
+                .filter(|(_, channel)| channel.peers.is_empty() && channel.last_activity.elapsed() >= idle_threshold)
+                .map(|(session_id, _)| session_id.clone())
+                .collect();
+            for session_id in &to_evict {
+                map.remove(session_id);
+            }
+            to_evict
+        };
+
+        if !evicted.is_empty() {
+            let mut watcher_generations = self.watcher_generations.write().await;
+            watcher_generations.retain(|(session_id, _), _| !evicted.contains(session_id));
+            let mut metrics = self.metrics.write().await;
+            for session_id in &evicted {
+                metrics.remove(session_id);
+            }
+        }
+        evicted
+    }
+
     async fn update_metrics(&self, session_id: &str, update: impl FnOnce(&mut SessionMetrics)) {
         let snapshot = {
             let mut metrics = self.metrics.write().await;
@@ -547,13 +627,22 @@ impl Hub {
     /// watcher) transparently sees the merged result. Returns false if the
     /// session or buffer doesn't exist yet — the caller should always
     /// `join_buffer` before sending operations.
+    /// This is the hottest write path in the whole server — called on
+    /// every merged keystroke, from every file, in every session. Its
+    /// locking is split into two short critical sections specifically so
+    /// the CPU-bound tree-sitter parse in the middle never runs while
+    /// holding the lock: `self.inner` is one global `RwLock` shared by
+    /// every session on the server, so a parse taking even a few
+    /// milliseconds while holding it would stall unrelated operations in
+    /// every *other* session behind this one file's merge — at thousands of
+    /// concurrent editors, that turns a per-file cost into a server-wide one.
     pub async fn apply_buffer_op(
         &self,
         session_id: &str,
         path: &str,
         operation: text::Operation,
     ) -> bool {
-        {
+        let merged_text = {
             let mut map = self.inner.write().await;
             let Some(channel) = map.get_mut(session_id) else {
                 return false;
@@ -562,16 +651,33 @@ impl Hub {
                 return false;
             };
             buffer.apply_ops([operation]);
-            let text = buffer.text();
-            channel
-                .symbols
-                .insert(path.to_string(), symbols::extract_symbols(path, &text));
-            channel.files.insert(path.to_string(), text);
+            buffer.text()
+        };
+
+        // No lock held across this — the whole point of splitting the
+        // critical section. Benign tradeoff: a concurrent merge to the same
+        // path from another peer could land in between, and the symbol
+        // index committed below would then briefly reflect an
+        // already-superseded text snapshot. That's fine for a relevance
+        // signal (see `symbols.rs`'s own doc comment — "ranked on weaker
+        // evidence," not correctness-critical); the *next* merge to this
+        // path re-parses and corrects it. `files`/`file_order`, which *do*
+        // need to end up correct, are written from `merged_text` captured
+        // under the second lock below, specific to this call's own result,
+        // not from anything read outside it.
+        let new_symbols = symbols::extract_symbols(path, &merged_text);
+
+        {
+            let mut map = self.inner.write().await;
+            let Some(channel) = map.get_mut(session_id) else {
+                return false;
+            };
+            channel.symbols.insert(path.to_string(), new_symbols);
+            channel.files.insert(path.to_string(), merged_text);
             channel.file_order.retain(|existing| existing != path);
             channel.file_order.insert(0, path.to_string());
-        } // `map`'s write guard drops here — `record_merge` below broadcasts,
-        // which needs its own read lock on `self.inner`, so it must not
-        // still be held.
+            channel.last_activity = Instant::now();
+        }
         self.record_merge(session_id).await;
         true
     }
@@ -1197,7 +1303,7 @@ mod tests {
     async fn catch_up_digest_reports_messages_missed_since_disconnect() {
         let hub = Hub::new();
         hub.add_peer("s1", "alice").await;
-        hub.remove_peer("s1", "alice").await; // records last_seen_history_len = 0
+        hub.remove_peer("s1", "alice").await; // records last_seen_total_messages = 0
         hub.push_chat_message(
             "s1",
             ChatMessage {
@@ -1219,6 +1325,40 @@ mod tests {
             None,
             "bob never left, so nothing to catch up on"
         );
+    }
+
+    /// Regression test for a real bug caught in review: `catch_up_digest`
+    /// used to store a `history` vec *index* at disconnect time, but
+    /// `push_chat_message` left-drains `history` once it exceeds
+    /// `CHAT_HISTORY_CAP` — so a stored index silently pointed at the wrong
+    /// messages after any drain happened while the user was away. This
+    /// drives the drain hard enough to prove the counter-based fix doesn't
+    /// have the same problem: it must still report the right count and the
+    /// right (most recent, still-retained) message text, not garbage.
+    #[tokio::test]
+    async fn catch_up_digest_survives_history_cap_eviction() {
+        let hub = Hub::new();
+        hub.add_peer("s1", "alice").await;
+        hub.remove_peer("s1", "alice").await; // last_seen_total_messages = 0
+
+        // Push well past CHAT_HISTORY_CAP (50) while alice is away, forcing
+        // `push_chat_message`'s drain to run repeatedly.
+        for i in 0..70 {
+            hub.push_chat_message(
+                "s1",
+                ChatMessage { sender: "bob".to_string(), text: format!("message {i}") },
+            )
+            .await;
+        }
+
+        let digest = hub.catch_up_digest("s1", "alice").await.expect("should have a digest");
+        // The true count (70) must be reported even though only 50 messages
+        // physically survived the cap — this is the honest-degradation path
+        // documented on `catch_up_digest`, not silent wrong data.
+        assert!(digest.contains("70 messages"), "digest was: {digest}");
+        // The most recent message must still be the correct tail content,
+        // not whatever happened to sit at a stale vec index.
+        assert!(digest.contains("message 69"), "digest was: {digest}");
     }
 
     #[tokio::test]
@@ -1267,5 +1407,45 @@ mod tests {
         hub.apply_buffer_op("s1", "a.rs", operation).await;
 
         assert_eq!(hub.get_metrics("s1").await.merges_applied, 1);
+    }
+
+    #[tokio::test]
+    async fn evict_idle_sessions_only_removes_empty_and_expired() {
+        let hub = Hub::new();
+
+        hub.add_peer("idle", "alice").await;
+        hub.save_file("idle", "a.rs".to_string(), "fn a() {}".to_string()).await;
+        hub.remove_peer("idle", "alice").await; // zero peers, will be "idle" long enough
+
+        hub.add_peer("occupied", "bob").await; // zero-idle-time, but still has a peer
+
+        // An idle threshold of zero means "idle for any amount of time
+        // counts" — lets the test not need a real sleep.
+        let evicted = hub.evict_idle_sessions(Duration::from_secs(0)).await;
+
+        assert_eq!(evicted, vec!["idle".to_string()]);
+        assert_eq!(hub.get_file("idle", "a.rs").await, None, "the whole channel, including its files, must be gone");
+        assert_eq!(
+            hub.peer_ids("occupied").await,
+            vec!["bob".to_string()],
+            "a session with a connected peer must never be evicted"
+        );
+    }
+
+    #[tokio::test]
+    async fn evict_idle_sessions_respects_the_ttl() {
+        let hub = Hub::new();
+        hub.add_peer("fresh", "alice").await;
+        hub.save_file("fresh", "a.rs".to_string(), "fn a() {}".to_string()).await;
+        hub.remove_peer("fresh", "alice").await;
+
+        // A long TTL means "not idle long enough yet" — must survive.
+        let evicted = hub.evict_idle_sessions(Duration::from_secs(3600)).await;
+        assert!(evicted.is_empty());
+        assert_eq!(
+            hub.get_file("fresh", "a.rs").await,
+            Some("fn a() {}".to_string()),
+            "channel and its files must still be there — not evicted yet"
+        );
     }
 }

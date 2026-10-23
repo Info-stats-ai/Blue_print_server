@@ -271,7 +271,7 @@ async fn complete_login(
     let code = query
         .code
         .ok_or_else(|| anyhow::anyhow!("missing authorization code"))?;
-    let email = fetch_verified_email(provider, &code).await?;
+    let email = fetch_verified_email(&state.http_client, provider, &code).await?;
     let user_id = find_or_create_user(state, &email).await?;
     let token =
         create_jwt(&user_id, &state.jwt_secret).map_err(|error| anyhow::anyhow!("{error:?}"))?;
@@ -282,11 +282,10 @@ async fn complete_login(
 /// userinfo endpoint with it to get a verified email — never trusts an
 /// unverified or client-supplied email, since the whole point of OAuth here
 /// is that the *provider* vouches for the identity.
-async fn fetch_verified_email(provider: Provider, code: &str) -> anyhow::Result<String> {
+async fn fetch_verified_email(client: &reqwest::Client, provider: Provider, code: &str) -> anyhow::Result<String> {
     let client_id = require_client_id(provider)?;
     let client_secret = require_client_secret(provider)?;
     let redirect_uri = callback_url(provider)?;
-    let client = reqwest::Client::new();
 
     let token_response = client
         .post(provider.token_url())
@@ -309,8 +308,8 @@ async fn fetch_verified_email(provider: Provider, code: &str) -> anyhow::Result<
         .ok_or_else(|| anyhow::anyhow!("token exchange response had no access_token"))?;
 
     match provider {
-        Provider::Github => fetch_github_email(&client, access_token).await,
-        Provider::Google => fetch_google_email(&client, access_token).await,
+        Provider::Github => fetch_github_email(client, access_token).await,
+        Provider::Google => fetch_google_email(client, access_token).await,
     }
 }
 
