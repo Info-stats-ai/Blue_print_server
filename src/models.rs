@@ -58,6 +58,10 @@ pub struct ExecutionPlan {
     pub status: String,
     pub reviewed_by: Option<String>,
     pub review_note: Option<String>,
+    // JSON-encoded {path: content} snapshot of every synced file in the
+    // session at the moment this plan was created — what `restore_plan`
+    // writes back. `None` for plans created before this existed.
+    pub files: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

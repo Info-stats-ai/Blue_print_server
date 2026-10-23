@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::extract::{Extension, Path, Query, State};
 use axum::Json;
 use chrono::Utc;
@@ -392,15 +394,23 @@ pub async fn create_plan(
 
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
+    // Snapshot every synced file at this moment, not just the free-text
+    // description — this is what makes "approve"/"restore" operate on the
+    // actual code state instead of a note about it. `files` being a plain
+    // JSON column (not a new table per file) keeps a snapshot atomic: one
+    // row read back is the whole state, nothing to join or go stale.
+    let files = serde_json::to_string(&state.hub.get_all_files(&payload.session_id).await)
+        .unwrap_or_else(|_| "{}".to_string());
 
     sqlx::query(
-        "INSERT INTO execution_plans (id, session_id, author_id, content, status, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, 'pending', ?, ?)",
+        "INSERT INTO execution_plans (id, session_id, author_id, content, status, files, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",
     )
     .bind(&id)
     .bind(&payload.session_id)
     .bind(&user_id)
     .bind(&payload.content)
+    .bind(&files)
     .bind(now)
     .bind(now)
     .execute(&state.pool)
@@ -414,6 +424,7 @@ pub async fn create_plan(
         status: "pending".to_string(),
         reviewed_by: None,
         review_note: None,
+        files: Some(files),
         created_at: now,
         updated_at: now,
     };
@@ -554,4 +565,54 @@ pub async fn list_plans(
             .await?;
 
     Ok(Json(plans))
+}
+
+/// Restores a session's live files to exactly what a given plan snapshotted
+/// — the "finalize/version" layer's restore step, with no Git/GitHub
+/// involved. Owner-only, same as approve/reject: this overwrites what
+/// everyone in the session currently sees, so it needs the same authority
+/// as accepting a change in the first place, not just session membership.
+/// Nothing is destructively lost by restoring an old plan: every prior plan
+/// row stays in `execution_plans` untouched, so restoring is just "make
+/// this earlier, already-recorded state current again," not a delete.
+pub async fn restore_plan(
+    State(state): State<AppState>,
+    Extension(AuthUser(user_id)): Extension<AuthUser>,
+    Path(plan_id): Path<String>,
+) -> Result<Json<PlanResponse>, AppError> {
+    let plan: ExecutionPlan = sqlx::query_as("SELECT * FROM execution_plans WHERE id = ?")
+        .bind(&plan_id)
+        .fetch_optional(&state.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("plan not found".into()))?;
+
+    require_session_owner(&state, &plan.session_id, &user_id).await?;
+
+    let files: HashMap<String, String> = plan
+        .files
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|error| AppError::Internal(format!("corrupt plan snapshot: {error}")))?
+        .unwrap_or_default();
+
+    for (path, content) in &files {
+        state.hub.restore_file(&plan.session_id, path.clone(), content.clone()).await;
+    }
+
+    state
+        .hub
+        .broadcast(
+            &plan.session_id,
+            &json!({
+                "type": "files_restored",
+                "plan_id": plan.id,
+                "restored_by": user_id,
+                "paths": files.keys().collect::<Vec<_>>(),
+                "timestamp": Utc::now(),
+            }),
+        )
+        .await;
+
+    Ok(Json(PlanResponse { status: plan.status.clone(), plan }))
 }

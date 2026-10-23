@@ -1,17 +1,20 @@
 mod agent;
 mod auth;
+mod checkpoint;
+mod crdt;
 mod db;
 mod errors;
 mod handlers;
 mod models;
+mod symbols;
 mod ws;
 
 use axum::routing::{get, post, put};
-use axum::{middleware, Router};
+use axum::{Router, middleware};
 use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use std::time::Duration;
-use tower_governor::{governor::GovernorConfigBuilder, GovernorLayer};
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
@@ -27,8 +30,8 @@ async fn main() {
 
     // Railway sets DATABASE_URL explicitly to a volume-mounted path; this
     // default just keeps local/ad-hoc startup from panicking when it's unset.
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "sqlite:///data/blueprint.db".to_string());
+    let database_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:///data/blueprint.db".to_string());
     let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
 
     let pool = db::init_pool(&database_url)
@@ -40,6 +43,8 @@ async fn main() {
         hub: ws::Hub::new(),
         jwt_secret,
     };
+
+    tokio::spawn(checkpoint::run_checkpoint_sweep(state.clone()));
 
     // Token bucket: refills 1 req/600ms (~100/min sustained) per peer IP, burst up to 100.
     let global_governor_conf = GovernorConfigBuilder::default()
@@ -94,6 +99,7 @@ async fn main() {
         )
         .route("/plans/{id}/approve", put(handlers::approve_plan))
         .route("/plans/{id}/reject", put(handlers::reject_plan))
+        .route("/plans/{id}/restore", put(handlers::restore_plan))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::auth_middleware,
