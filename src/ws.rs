@@ -546,8 +546,14 @@ impl Hub {
         };
 
         if !evicted.is_empty() {
+            // `HashSet` lookup, not `Vec::contains` — `retain` below calls
+            // this once per `watcher_generations` entry, so an O(n) lookup
+            // here would make the whole cleanup O(sessions × generations)
+            // at real scale (many evicted sessions, many tracked
+            // (session, path) pairs across the server).
+            let evicted_set: HashSet<&str> = evicted.iter().map(String::as_str).collect();
             let mut watcher_generations = self.watcher_generations.write().await;
-            watcher_generations.retain(|(session_id, _), _| !evicted.contains(session_id));
+            watcher_generations.retain(|(session_id, _), _| !evicted_set.contains(session_id.as_str()));
             let mut metrics = self.metrics.write().await;
             for session_id in &evicted {
                 metrics.remove(session_id);
