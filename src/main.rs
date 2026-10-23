@@ -6,6 +6,7 @@ mod db;
 mod errors;
 mod handlers;
 mod models;
+mod oauth;
 mod symbols;
 mod ws;
 
@@ -22,6 +23,7 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub hub: ws::Hub,
     pub jwt_secret: String,
+    pub oauth: oauth::OAuthState,
 }
 
 #[tokio::main]
@@ -42,6 +44,7 @@ async fn main() {
         pool,
         hub: ws::Hub::new(),
         jwt_secret,
+        oauth: oauth::OAuthState::new(),
     };
 
     tokio::spawn(checkpoint::run_checkpoint_sweep(state.clone()));
@@ -75,6 +78,11 @@ async fn main() {
     let auth_routes = Router::new()
         .route("/auth/register", post(auth::register))
         .route("/auth/login", post(auth::login))
+        // Phase 8 desktop-loopback OAuth. Same rate-limit tier as
+        // register/login — it's still the sign-in surface, just reached via
+        // a browser redirect instead of a direct API call.
+        .route("/auth/{provider}", get(oauth::start))
+        .route("/auth/{provider}/callback", get(oauth::callback))
         .layer(GovernorLayer::new(auth_governor_conf));
 
     let public_routes = Router::new().route("/ws", get(ws::ws_handler));
