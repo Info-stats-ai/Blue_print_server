@@ -186,7 +186,7 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
                     &json!({"type": "blueprint_update", "content": content}),
                 )
                 .await;
-            broadcast_agent_reply(&state.hub, &session_id, "Blueprint updated.".to_string()).await;
+            broadcast_agent_reply(&state.hub, &session_id, "Reference updated.".to_string()).await;
         }
         Err(reason) => {
             eprintln!("agent: blueprint generation API error in session {session_id}: {reason}");
