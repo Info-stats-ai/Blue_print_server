@@ -56,6 +56,38 @@ const MAX_FILE_CONTEXT_CHARS: usize = 12_000;
 // old flat per-file cap didn't prevent.
 const BLUEPRINT_CONTEXT_BUDGET_CHARS: usize = 60_000;
 
+// Same reasoning as BLUEPRINT_CONTEXT_BUDGET_CHARS, sized a bit larger:
+// triage's whole job is reviewing every synced file at once (there's no
+// relevance ranking to narrow it, unlike the blueprint prompt), so it
+// needs room for more files in one call, bounded total rather than
+// per-file so it still can't grow unboundedly with session size.
+const TRIAGE_CONTEXT_BUDGET_CHARS: usize = 80_000;
+
+// How many recent chat messages to include as context for a triage run —
+// same window as blueprint generation, since both want the planning
+// conversation, not just the last few lines.
+const TRIAGE_HISTORY_WINDOW: usize = 15;
+
+// Two fixed sections, exact headings, every time — "## Flagged" is parsed
+// back out by `parse_triage_flagged` the same way `parse_work_split` parses
+// "## Work Split": deterministic markdown the model is asked to produce
+// exactly, not JSON, because that's the format this codebase has already
+// proven reliable to get back reliably (see BLUEPRINT_SYSTEM_PROMPT_TEMPLATE).
+const TRIAGE_SYSTEM_PROMPT_TEMPLATE: &str = "\
+You are reviewing every synced file in a shared coding session before the team commits to a final state. \
+Using the team's reference.md below and the recent conversation, assess EVERY file listed under \"Current file \
+contents\" for whether its current content is safe to accept as-is, or whether it needs a human's judgment first — \
+because it contradicts something reference.md states, conflicts with what another listed file currently does, or \
+deviates from what the conversation agreed to.\n\n\
+Respond with exactly these two '##' sections, in this order, every time, with these exact headings:\n\n\
+## Safe\nOne bullet per file that's fine as-is, in the form `- `path`: one-line reason`.\n\n\
+## Flagged\nOne bullet per file that needs a human to look at it, in the form `- `path`: one-line reason naming \
+the specific contradiction or conflict`. If nothing is flagged, write a single bullet `- (none)` — never omit the \
+heading.\n\n\
+Under 600 words total.\n\n\
+Reference.md:\n{blueprint_content}\n\n\
+Current file contents:\n{file_context}";
+
 // Below this length a word is almost certainly noise (articles, "is", "to",
 // coordinate the chat) rather than a symbol or project-specific term worth
 // ranking files by, so it's dropped before being used as a query term.
@@ -194,6 +226,204 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
                 .await;
         }
     }
+}
+
+/// Single-flight wrapper around `handle_triage_request` — same reasoning
+/// as `run_blueprint_job`: an owner mashing the triage trigger shouldn't
+/// spawn concurrent reviews racing to post their own report.
+pub async fn run_triage_job(state: AppState, session_id: String) {
+    if !state.hub.try_start_triage_job(&session_id).await {
+        return;
+    }
+    loop {
+        handle_triage_request(state.clone(), session_id.clone()).await;
+        if !state.hub.finish_triage_job(&session_id).await {
+            break;
+        }
+        if !state.hub.try_start_triage_job(&session_id).await {
+            break;
+        }
+    }
+}
+
+/// Handles an explicit "@agent triage" request (owner-only — gated in
+/// ws.rs, since this is the step right before deciding what the group
+/// commits to): reviews every synced file against reference.md and the
+/// recent conversation, and posts the result as a pending 'triage' plan
+/// for the owner to review. Deliberately never published as the live
+/// reference and never auto-applied anywhere — the whole point is
+/// surfacing what needs a human's judgment, not replacing that judgment.
+/// One LLM call; any failure is reported into chat instead of panicking.
+pub async fn handle_triage_request(state: AppState, session_id: String) {
+    let all_files = state.hub.get_all_files(&session_id).await;
+    if all_files.is_empty() {
+        broadcast_agent_reply(
+            &state.hub,
+            &session_id,
+            "Nothing synced yet to triage.".to_string(),
+        )
+        .await;
+        return;
+    }
+
+    let history = state
+        .hub
+        .recent_chat_history(&session_id, TRIAGE_HISTORY_WINDOW)
+        .await;
+    let blueprint_content = state.hub.get_blueprint(&session_id).await;
+    let files = budget_limited_files(all_files, TRIAGE_CONTEXT_BUDGET_CHARS);
+    let file_context = format_file_context(&files);
+    let model = model_or_fallback();
+    println!("agent: running triage in session {session_id} using model {model}");
+
+    let system = TRIAGE_SYSTEM_PROMPT_TEMPLATE
+        .replace("{blueprint_content}", &blueprint_content)
+        .replace("{file_context}", &file_context);
+    // Unlike a reply or a blueprint regen, triage makes sense even with no
+    // chat history at all (a session that's only ever had files synced,
+    // never discussed) — `build_messages` returns empty in that case, so
+    // fall back to a single explicit trigger message rather than bailing
+    // the way `handle_mention`/`handle_blueprint_request` do.
+    let messages = build_messages(&history);
+    let messages = if messages.is_empty() {
+        vec![json!({"role": "user", "content": "Run the triage review now."})]
+    } else {
+        messages
+    };
+
+    match call_anthropic(&state.http_client, &model, &system, messages).await {
+        Ok((content, cost)) => {
+            state.hub.record_llm_call(&session_id, cost).await;
+            let flagged_count = parse_triage_flagged(&content).len();
+            if let Err(error) = insert_triage_plan(&state, &session_id, &content).await {
+                eprintln!(
+                    "agent: failed to store triage plan for session {session_id}: {error}"
+                );
+                broadcast_agent_reply(
+                    &state.hub,
+                    &session_id,
+                    "Triage ran, but saving the report failed.".to_string(),
+                )
+                .await;
+                return;
+            }
+            let noun = if flagged_count == 1 { "file" } else { "files" };
+            broadcast_agent_reply(
+                &state.hub,
+                &session_id,
+                format!("Triage report posted — {flagged_count} {noun} flagged for review."),
+            )
+            .await;
+        }
+        Err(reason) => {
+            eprintln!("agent: triage API error in session {session_id}: {reason}");
+            broadcast_agent_reply(&state.hub, &session_id, format!("(agent error: {reason})"))
+                .await;
+        }
+    }
+}
+
+/// Sorts `files` by path (deterministic — a `HashMap`'s own iteration
+/// order isn't) and greedily includes them up to `budget_chars`, the same
+/// shape `ws::Hub::relevant_files` returns for the blueprint prompt.
+/// Triage has no relevance ranking to apply — every synced file is in
+/// scope by definition — so this is the ranking-free version of that same
+/// budget cutoff.
+fn budget_limited_files(
+    files: HashMap<String, String>,
+    budget_chars: usize,
+) -> Vec<(String, String)> {
+    let mut sorted: Vec<(String, String)> = files.into_iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut selected = Vec::new();
+    let mut used_chars = 0usize;
+    for (path, content) in sorted {
+        if used_chars > 0 && used_chars + content.chars().count() > budget_chars {
+            break;
+        }
+        used_chars += content.chars().count();
+        selected.push((path, content));
+    }
+    selected
+}
+
+/// Extracts the flagged paths out of a triage report's "## Flagged"
+/// section — same parsing style as `parse_work_split`, for the same
+/// reason: this is deterministic markdown the model was asked to produce
+/// exactly, not JSON. Used only to report a count in chat; the full report
+/// (each flagged file's stated reason included) lives in the plan's
+/// `content` for a human to actually read.
+fn parse_triage_flagged(report: &str) -> Vec<String> {
+    let mut flagged = Vec::new();
+    let Some(section_start) = report.find("## Flagged") else {
+        return flagged;
+    };
+    let section = &report[section_start + "## Flagged".len()..];
+    let section_body = section.split("\n## ").next().unwrap_or(section);
+    for line in section_body.lines() {
+        let line = line.trim().trim_start_matches('-').trim();
+        let Some((path, _reason)) = line.split_once(':') else {
+            continue;
+        };
+        let path = path.trim().trim_matches('`');
+        if !path.is_empty() && path != "(none)" {
+            flagged.push(path.to_string());
+        }
+    }
+    flagged
+}
+
+/// Inserts `content` as a pending 'triage' plan, authored by the agent
+/// itself rather than any particular user — this mirrors
+/// `handlers::create_plan`'s INSERT, done directly here instead of
+/// through that HTTP endpoint, since a triage report isn't a specific
+/// user's authored submission the way a reference proposal is.
+async fn insert_triage_plan(
+    state: &AppState,
+    session_id: &str,
+    content: &str,
+) -> Result<(), sqlx::Error> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now();
+    sqlx::query(
+        "INSERT INTO execution_plans (id, session_id, author_id, content, status, kind, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, 'pending', 'triage', ?, ?)",
+    )
+    .bind(&id)
+    .bind(session_id)
+    .bind(ws::AGENT_USER_ID)
+    .bind(content)
+    .bind(now)
+    .bind(now)
+    .execute(&state.pool)
+    .await?;
+
+    state
+        .hub
+        .broadcast(
+            session_id,
+            &json!({
+                "type": "plan_submitted",
+                "data": {
+                    "id": id,
+                    "session_id": session_id,
+                    "author_id": ws::AGENT_USER_ID,
+                    "content": content,
+                    "status": "pending",
+                    "kind": "triage",
+                    "reviewed_by": null,
+                    "review_note": null,
+                    "files": null,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                "author_id": ws::AGENT_USER_ID,
+                "timestamp": now,
+            }),
+        )
+        .await;
+    Ok(())
 }
 
 /// Formats the files the caller selected via `Hub::relevant_files` (already
@@ -594,6 +824,51 @@ mod tests {
             parse_work_split("## Architecture\nNo split here.\n"),
             HashMap::new()
         );
+    }
+
+    #[test]
+    fn parses_triage_flagged_bullets() {
+        let report = "## Safe\n- `src/db.rs`: unrelated to anything else synced.\n\n## Flagged\n- `src/auth.rs`: renames `login` but `src/api.rs` still calls the old name.\n- `src/billing.rs`: contradicts reference.md's guardrail about never rounding totals.\n";
+        let flagged = parse_triage_flagged(report);
+        assert_eq!(flagged, vec!["src/auth.rs".to_string(), "src/billing.rs".to_string()]);
+    }
+
+    #[test]
+    fn parses_triage_flagged_none_as_empty() {
+        let report = "## Safe\n- `src/db.rs`: fine.\n\n## Flagged\n- (none)\n";
+        assert_eq!(parse_triage_flagged(report), Vec::<String>::new());
+    }
+
+    #[test]
+    fn missing_flagged_section_returns_empty() {
+        assert_eq!(parse_triage_flagged("## Safe\n- `a.rs`: fine.\n"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn budget_limited_files_is_deterministic_and_respects_the_cap() {
+        let mut files = HashMap::new();
+        files.insert("b.rs".to_string(), "b".repeat(10));
+        files.insert("a.rs".to_string(), "a".repeat(10));
+        files.insert("c.rs".to_string(), "c".repeat(10));
+
+        // Budget only fits two of the three files.
+        let selected = budget_limited_files(files, 20);
+        assert_eq!(selected.len(), 2);
+        // Sorted by path, not HashMap iteration order — a.rs and b.rs come
+        // before c.rs regardless of insertion order above.
+        assert_eq!(selected[0].0, "a.rs");
+        assert_eq!(selected[1].0, "b.rs");
+    }
+
+    #[test]
+    fn budget_limited_files_always_includes_at_least_one_file() {
+        // The "only break once used_chars > 0" rule in both this and
+        // `relevant_files` means a single file larger than the whole
+        // budget is still included rather than silently dropped.
+        let mut files = HashMap::new();
+        files.insert("huge.rs".to_string(), "x".repeat(1000));
+        let selected = budget_limited_files(files, 10);
+        assert_eq!(selected.len(), 1);
     }
 
     #[test]

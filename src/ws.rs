@@ -108,6 +108,11 @@ pub struct Hub {
     // once more after it finishes.
     blueprint_inflight: Arc<RwLock<HashSet<String>>>,
     blueprint_dirty: Arc<RwLock<HashSet<String>>>,
+    // Same single-flight pattern as the blueprint pair above, for triage
+    // runs — independent of it (a blueprint regen and a triage pass can
+    // legitimately run concurrently; they write to different places).
+    triage_inflight: Arc<RwLock<HashSet<String>>>,
+    triage_dirty: Arc<RwLock<HashSet<String>>>,
     // Phase 6's "conflicts avoided" numbers, kept per session and pushed to
     // every peer on each change (see `broadcast_metrics`) so the overlay
     // ticks up live instead of needing a poll.
@@ -477,6 +482,27 @@ impl Hub {
     pub async fn finish_blueprint_job(&self, session_id: &str) -> bool {
         self.blueprint_inflight.write().await.remove(session_id);
         self.blueprint_dirty.write().await.remove(session_id)
+    }
+
+    /// Single-flight gate for a triage run — same semantics as
+    /// `try_start_blueprint_job`, independent state.
+    pub async fn try_start_triage_job(&self, session_id: &str) -> bool {
+        let mut inflight = self.triage_inflight.write().await;
+        if inflight.contains(session_id) {
+            drop(inflight);
+            self.triage_dirty.write().await.insert(session_id.to_string());
+            false
+        } else {
+            inflight.insert(session_id.to_string());
+            true
+        }
+    }
+
+    /// Call when a triage job finishes — same semantics as
+    /// `finish_blueprint_job`.
+    pub async fn finish_triage_job(&self, session_id: &str) -> bool {
+        self.triage_inflight.write().await.remove(session_id);
+        self.triage_dirty.write().await.remove(session_id)
     }
 
     /// Records one CRDT merge for the session's "conflicts avoided" metric
@@ -1091,6 +1117,20 @@ async fn rehydrate_session_from_checkpoint(state: &AppState, session_id: &str) {
         .await;
 }
 
+/// True if `user_id` owns `session_id` — the same owner-authority check
+/// `handlers::require_session_owner` applies to the HTTP plan endpoints,
+/// duplicated here rather than shared because that function lives in a
+/// different module and returns an HTTP-flavored `AppError` on failure,
+/// not a plain bool a chat-trigger gate can branch on directly.
+async fn is_session_owner(state: &AppState, session_id: &str, user_id: &str) -> bool {
+    let owner_id: Option<String> = sqlx::query_scalar("SELECT owner_id FROM sessions WHERE id = ?")
+        .bind(session_id)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or_default();
+    owner_id.as_deref() == Some(user_id)
+}
+
 async fn handle_chat_message(state: &AppState, session_id: &str, user_id: &str, text: String) {
     let message = ChatMessage {
         sender: user_id.to_string(),
@@ -1117,10 +1157,59 @@ async fn handle_chat_message(state: &AppState, session_id: &str, user_id: &str, 
     }
     let lowered = message.text.to_lowercase();
     if lowered.contains("@agent blueprint") {
+        // This path spends the server's own shared key and writes the
+        // reference live with no approval step — reserved for the session
+        // owner, who's the one actually spending that money and the one
+        // with commit authority anyway. Anyone else gets routed to the
+        // client's own BYOK generate-reference flow (create_plan +
+        // owner approve), which is the one place non-owners can propose a
+        // reference update at all.
+        if !is_session_owner(state, session_id, user_id).await {
+            state
+                .hub
+                .broadcast(
+                    session_id,
+                    &json!({
+                        "type": "chat",
+                        "sender": AGENT_USER_ID,
+                        "text": "Only the session owner can regenerate the reference from chat. Use the Generate Reference button to propose one with your own key for the owner to approve.",
+                    }),
+                )
+                .await;
+            return;
+        }
         let state = state.clone();
         let session_id = session_id.to_string();
         tokio::spawn(async move {
             agent::run_blueprint_job(state, session_id).await;
+        });
+    } else if lowered.contains("@agent triage") {
+        // Triage reviews every synced file in the session at once (not
+        // just whatever the requester has open), which only the server
+        // can assemble today — see agent::handle_triage_request. That
+        // means this spends the shared key the same way "@agent
+        // blueprint" does, so it gets the same owner-only gate and for
+        // the same reason: whoever's about to decide what the group
+        // commits to is the one who should be triggering (and paying
+        // for) the review that informs that decision.
+        if !is_session_owner(state, session_id, user_id).await {
+            state
+                .hub
+                .broadcast(
+                    session_id,
+                    &json!({
+                        "type": "chat",
+                        "sender": AGENT_USER_ID,
+                        "text": "Only the session owner can run a triage review.",
+                    }),
+                )
+                .await;
+            return;
+        }
+        let state = state.clone();
+        let session_id = session_id.to_string();
+        tokio::spawn(async move {
+            agent::run_triage_job(state, session_id).await;
         });
     } else if lowered.contains("@agent") {
         let state = state.clone();

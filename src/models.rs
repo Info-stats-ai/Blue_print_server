@@ -62,6 +62,13 @@ pub struct ExecutionPlan {
     // session at the moment this plan was created — what `restore_plan`
     // writes back. `None` for plans created before this existed.
     pub files: Option<String>,
+    // "reference" (a proposed reference.md, approving it publishes
+    // `content` as the live blueprint) or "triage" (a multi-file review
+    // report — see `agent::run_triage_job` — whose approval just
+    // acknowledges it; see `handlers::approve_plan`). Any plan from before
+    // this column existed reads back as "reference", matching what it
+    // always implicitly was.
+    pub kind: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

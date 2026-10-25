@@ -425,6 +425,12 @@ pub async fn create_plan(
         reviewed_by: None,
         review_note: None,
         files: Some(files),
+        // Every plan created through this HTTP path is a reference
+        // proposal — `kind` defaults to 'reference' at the DB level too
+        // (see the migration), this just mirrors that on the struct this
+        // handler hands back. Triage reports are inserted directly by
+        // `agent::run_triage_job`, not through this endpoint.
+        kind: "reference".to_string(),
         created_at: now,
         updated_at: now,
     };
@@ -478,6 +484,26 @@ pub async fn approve_plan(
         updated_at: now,
         ..existing
     };
+
+    // Approval is what makes a *reference* plan's content the live
+    // reference doc — this is the owner-authority gate every path that
+    // wants to update the shared reference now goes through (see ws.rs's
+    // handling of "@agent blueprint" and the client's BYOK
+    // generate-reference flow), rather than any session member being able
+    // to overwrite it directly. A 'triage' plan's content is a report
+    // about many files, not a document meant to replace the reference
+    // doc — approving one just acknowledges it (the status update above),
+    // it must never land in `blueprint`.
+    if plan.kind == "reference" {
+        state.hub.set_blueprint(&plan.session_id, plan.content.clone()).await;
+        state
+            .hub
+            .broadcast(
+                &plan.session_id,
+                &json!({"type": "blueprint_update", "content": plan.content}),
+            )
+            .await;
+    }
 
     state
         .hub
