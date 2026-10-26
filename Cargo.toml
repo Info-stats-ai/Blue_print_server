@@ -18,8 +18,12 @@ tower-http = { version = "0.6", features = ["cors"] }
 chrono = { version = "0.4", features = ["serde"] }
 tower_governor = "0.8"
 similar = "2"
-text = { path = "../i-ide/crates/text" }
-clock = { path = "../i-ide/crates/clock" }
+# Pinned to a specific commit (not a branch) so this build is reproducible
+# and never silently picks up unrelated i-ide changes. i-ide is a private
+# repo — Railway's build needs read credentials for it, injected via
+# nixpacks.toml at build time (see that file's comment for setup).
+text = { git = "https://github.com/Info-stats-ai/i-ide.git", rev = "4acb3d7c1f7f1fbd97550d07009847ac8597f871" }
+clock = { git = "https://github.com/Info-stats-ai/i-ide.git", rev = "4acb3d7c1f7f1fbd97550d07009847ac8597f871" }
 anyhow = "1"
 tree-sitter = "0.27.1"
 tree-sitter-rust = "0.24.2"

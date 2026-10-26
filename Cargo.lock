@@ -292,6 +292,7 @@ dependencies = [
 [[package]]
 name = "clock"
 version = "0.1.0"
+source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=4acb3d7c1f7f1fbd97550d07009847ac8597f871#4acb3d7c1f7f1fbd97550d07009847ac8597f871"
 dependencies = [
  "serde",
  "smallvec",
@@ -300,6 +301,7 @@ dependencies = [
 [[package]]
 name = "collections"
 version = "0.1.0"
+source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=4acb3d7c1f7f1fbd97550d07009847ac8597f871#4acb3d7c1f7f1fbd97550d07009847ac8597f871"
 dependencies = [
  "gpui_util",
  "indexmap",
@@ -746,6 +748,7 @@ dependencies = [
 [[package]]
 name = "gpui_util"
 version = "0.1.0"
+source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=4acb3d7c1f7f1fbd97550d07009847ac8597f871#4acb3d7c1f7f1fbd97550d07009847ac8597f871"
 dependencies = [
  "anyhow",
  "log",
@@ -1911,6 +1914,7 @@ dependencies = [
 [[package]]
 name = "rope"
 version = "0.1.0"
+source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=4acb3d7c1f7f1fbd97550d07009847ac8597f871#4acb3d7c1f7f1fbd97550d07009847ac8597f871"
 dependencies = [
  "gpui_util",
  "heapless",
@@ -2464,6 +2468,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sum_tree"
 version = "0.1.0"
+source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=4acb3d7c1f7f1fbd97550d07009847ac8597f871#4acb3d7c1f7f1fbd97550d07009847ac8597f871"
 dependencies = [
  "heapless",
  "rayon",
@@ -2529,6 +2534,7 @@ dependencies = [
 [[package]]
 name = "text"
 version = "0.1.0"
+source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=4acb3d7c1f7f1fbd97550d07009847ac8597f871#4acb3d7c1f7f1fbd97550d07009847ac8597f871"
 dependencies = [
  "anyhow",
  "clock",
@@ -3501,6 +3507,7 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 [[package]]
 name = "ztracing"
 version = "0.1.0"
+source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=4acb3d7c1f7f1fbd97550d07009847ac8597f871#4acb3d7c1f7f1fbd97550d07009847ac8597f871"
 dependencies = [
  "tracing",
  "ztracing_macro",
@@ -3509,3 +3516,4 @@ dependencies = [
 [[package]]
 name = "ztracing_macro"
 version = "0.1.0"
+source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=4acb3d7c1f7f1fbd97550d07009847ac8597f871#4acb3d7c1f7f1fbd97550d07009847ac8597f871"

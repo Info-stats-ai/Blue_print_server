@@ -1,0 +1,16 @@
+# text/clock in Cargo.toml are git dependencies on the private
+# Info-stats-ai/i-ide repo. Railway's build container has no credentials
+# for it by default, so this rewrites github.com HTTPS clones to include a
+# PAT before cargo (and its internal git clone of that dependency) runs.
+#
+# Setup required in Railway's dashboard for this service:
+#   1. Create a GitHub fine-grained PAT scoped to read-only "Contents"
+#      access on Info-stats-ai/i-ide only — not a broad/classic token.
+#   2. Add it as a Railway environment variable named I_IDE_READ_PAT.
+# Without that variable set, this cmd is a no-op (empty token in the URL
+# rewrite) and the git clone will fail with the same auth error as today —
+# that failure then points straight back at this comment.
+[phases.setup]
+cmds = [
+    "git config --global url.\"https://${I_IDE_READ_PAT}@github.com/\".insteadOf \"https://github.com/\""
+]

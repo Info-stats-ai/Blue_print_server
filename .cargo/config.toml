@@ -1,0 +1,7 @@
+[net]
+# Cargo's built-in libgit2 client doesn't honor the system git credential
+# helper (osxkeychain locally, the PAT-based URL rewrite in nixpacks.toml
+# on Railway) the way the real `git` CLI does — this makes it shell out to
+# the actual `git` binary for dependency fetches instead, so both
+# environments' credentials actually get used.
+git-fetch-with-cli = true
