@@ -16,6 +16,10 @@ pub struct Session {
     pub name: String,
     pub owner_id: String,
     pub created_at: DateTime<Utc>,
+    // Whether owner_id has final authority (sharing scope, reference
+    // approval, triage) over this session, or everyone's equal. See the
+    // migration that added this column for why it defaults to true.
+    pub has_leader: bool,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -106,6 +110,14 @@ pub struct ChatMessage {
 #[derive(Debug, Deserialize)]
 pub struct CreateSessionRequest {
     pub name: String,
+    // Defaults to true (leader-led, matching every session created before
+    // this existed) when the client omits it — see Session::has_leader.
+    #[serde(default = "default_true")]
+    pub has_leader: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Serialize)]

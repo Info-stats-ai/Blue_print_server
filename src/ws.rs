@@ -862,6 +862,19 @@ async fn handle_socket(
     let catch_up = state.hub.catch_up_digest(&session_id, &user_id).await;
     let presence = state.hub.get_presence(&session_id).await;
     let metrics = state.hub.get_metrics(&session_id).await;
+    // (has_leader, owner_id) — every peer needs this from the session's own
+    // record, not just whoever created it locally, so everyone agrees on
+    // whether this session has a leader and who it is.
+    let leader_info: Option<(bool, String)> =
+        sqlx::query_as("SELECT has_leader, owner_id FROM sessions WHERE id = ?")
+            .bind(&session_id)
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+    let (has_leader, leader_id) = match leader_info {
+        Some((has_leader, owner_id)) => (has_leader, has_leader.then_some(owner_id)),
+        None => (true, None),
+    };
 
     let snapshot = json!({
         "type": "snapshot",
@@ -874,6 +887,8 @@ async fn handle_socket(
         "catch_up": catch_up,
         "presence": presence,
         "metrics": metrics,
+        "has_leader": has_leader,
+        "leader_id": leader_id,
     });
 
     if socket
