@@ -969,6 +969,13 @@ enum ClientMessage {
     Chat { text: String },
     FileOpen { sender: String, path: String },
     FileSave { path: String, content: String },
+    // A live cursor/caret position within `path`, broadcast on a best-effort
+    // basis as the sender's editor selection moves. Not persisted anywhere
+    // (no `Hub` state, not part of `Snapshot`) — purely ephemeral, relayed
+    // straight through the same way `FileOpen` is, since a newly-joining
+    // peer doesn't need anyone's historical cursor position, only live
+    // updates from the moment they connect onward.
+    CursorMoved { sender: String, path: String, row: u32 },
     // Requests (or re-requests, after a reconnect) a CRDT replica id and the
     // current text for `path`, so the client can construct a local buffer
     // that merges correctly with everyone else's edits from this point on.
@@ -1015,6 +1022,21 @@ async fn handle_client_message(
         }
         ClientMessage::FileSave { path, content } => {
             handle_file_save_message(state, session_id, user_id, path, content).await;
+            None
+        }
+        ClientMessage::CursorMoved { sender, path, row } => {
+            state
+                .hub
+                .broadcast(
+                    session_id,
+                    &json!({
+                        "type": "cursor_moved",
+                        "sender": sender,
+                        "path": path,
+                        "row": row,
+                    }),
+                )
+                .await;
             None
         }
         ClientMessage::BufferJoin { path } => {
