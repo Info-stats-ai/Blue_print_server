@@ -142,11 +142,16 @@ async fn main() {
         .layer(GovernorLayer::new(global_governor_conf))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
+    // Railway assigns a dynamic port via $PORT and routes traffic to it, not to a
+    // fixed port — binding to a hardcoded port here caused "Application failed to
+    // respond" since Railway's proxy couldn't reach the process.
+    let port = std::env::var("PORT").unwrap_or_else(|_| "3000".to_string());
+    let bind_addr = format!("0.0.0.0:{port}");
+    let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
-        .expect("failed to bind to port 3000");
+        .unwrap_or_else(|error| panic!("failed to bind to {bind_addr}: {error}"));
 
-    println!("blueprint-server listening on 0.0.0.0:3000");
+    println!("blueprint-server listening on {bind_addr}");
 
     axum::serve(
         listener,
