@@ -21,9 +21,14 @@ similar = "2"
 # Pinned to a specific commit (not a branch) so this build is reproducible
 # and never silently picks up unrelated i-ide changes. i-ide is a private
 # repo — Railway's build needs read credentials for it, injected via
-# nixpacks.toml at build time (see that file's comment for setup).
-text = { git = "https://github.com/Info-stats-ai/i-ide.git", rev = "4acb3d7c1f7f1fbd97550d07009847ac8597f871" }
-clock = { git = "https://github.com/Info-stats-ai/i-ide.git", rev = "4acb3d7c1f7f1fbd97550d07009847ac8597f871" }
+# railway.json's buildCommand at build time (see that file's comment).
+text = { git = "https://github.com/Info-stats-ai/i-ide.git", rev = "943228c888fc19769d9f7494126e0e1f217ce973" }
+clock = { git = "https://github.com/Info-stats-ai/i-ide.git", rev = "943228c888fc19769d9f7494126e0e1f217ce973" }
+# Only for its `auth` module (asymmetric keypair/encrypt/decrypt) — the
+# OAuth loopback callback's local-impersonation fix reuses Zed's own
+# existing mechanism (see oauth.rs's doc comment) instead of hand-rolling
+# crypto. Doesn't pull in gpui: that's an opt-in feature this doesn't enable.
+rpc = { git = "https://github.com/Info-stats-ai/i-ide.git", rev = "943228c888fc19769d9f7494126e0e1f217ce973" }
 anyhow = "1"
 tree-sitter = "0.27.1"
 tree-sitter-rust = "0.24.2"

@@ -7,11 +7,12 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth::AuthUser;
+use crate::email;
 use crate::errors::AppError;
 use crate::models::{
     Contract, ContractResponse, CreatePlanRequest, CreateContractRequest, CreateIntentRequest,
-    CreateSessionRequest, ExecutionPlan, Intent, IntentResponse, ListQuery, OkResponse,
-    PlanResponse, RejectPlanRequest, Session, SessionResponse, UpdateContractRequest,
+    CreateSessionRequest, ExecutionPlan, Intent, IntentResponse, InviteRequest, ListQuery,
+    OkResponse, PlanResponse, RejectPlanRequest, Session, SessionResponse, UpdateContractRequest,
     UpdateIntentRequest,
 };
 use crate::AppState;
@@ -156,6 +157,46 @@ pub async fn join_session(
     .bind(now)
     .execute(&state.pool)
     .await?;
+
+    Ok(Json(OkResponse { ok: true }))
+}
+
+/// `POST /sessions/{id}/invite` — emails `payload.email` the session id and
+/// plain instructions for pasting it into "Join Session" (see `email.rs`
+/// for why it's not a one-click deep link). Any existing member can invite
+/// someone, same authority anyone already has by just handing the session
+/// id to a person directly — this is a convenience wrapper around that,
+/// not a new permission boundary.
+pub async fn invite_to_session(
+    State(state): State<AppState>,
+    Extension(AuthUser(user_id)): Extension<AuthUser>,
+    Path(session_id): Path<String>,
+    Json(payload): Json<InviteRequest>,
+) -> Result<Json<OkResponse>, AppError> {
+    require_member(&state, &session_id, &user_id).await?;
+
+    let session_name: Option<(String,)> = sqlx::query_as("SELECT name FROM sessions WHERE id = ?")
+        .bind(&session_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some((session_name,)) = session_name else {
+        return Err(AppError::NotFound("session not found".into()));
+    };
+    let inviter_email: Option<(String,)> = sqlx::query_as("SELECT email FROM users WHERE id = ?")
+        .bind(&user_id)
+        .fetch_optional(&state.pool)
+        .await?;
+    let inviter_email = inviter_email.map(|(email,)| email).unwrap_or(user_id);
+
+    email::send_invite(
+        &state.http_client,
+        &payload.email,
+        &inviter_email,
+        &session_name,
+        &session_id,
+    )
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))?;
 
     Ok(Json(OkResponse { ok: true }))
 }

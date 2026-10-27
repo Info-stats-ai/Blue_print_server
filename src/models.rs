@@ -130,6 +130,11 @@ pub struct OkResponse {
     pub ok: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct InviteRequest {
+    pub email: String,
+}
+
 // ---- Contracts ----
 
 #[derive(Debug, Deserialize)]

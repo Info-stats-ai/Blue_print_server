@@ -3,6 +3,7 @@ mod auth;
 mod checkpoint;
 mod crdt;
 mod db;
+mod email;
 mod errors;
 mod handlers;
 mod models;
@@ -24,6 +25,7 @@ pub struct AppState {
     pub hub: ws::Hub,
     pub jwt_secret: String,
     pub oauth: oauth::OAuthState,
+    pub exchange: oauth::ExchangeState,
     // Shared across every outbound call this server makes (Anthropic,
     // GitHub, Google) instead of each call site building its own
     // `reqwest::Client`. A `Client` owns a connection pool; constructing a
@@ -60,6 +62,7 @@ async fn main() {
         hub: ws::Hub::new(),
         jwt_secret,
         oauth: oauth::OAuthState::new(),
+        exchange: oauth::ExchangeState::new(),
         http_client,
     };
 
@@ -99,6 +102,7 @@ async fn main() {
         // a browser redirect instead of a direct API call.
         .route("/auth/{provider}", get(oauth::start))
         .route("/auth/{provider}/callback", get(oauth::callback))
+        .route("/auth/exchange", post(oauth::exchange))
         .layer(GovernorLayer::new(auth_governor_conf));
 
     let public_routes = Router::new().route("/ws", get(ws::ws_handler));
@@ -109,6 +113,7 @@ async fn main() {
             post(handlers::create_session).get(handlers::list_sessions),
         )
         .route("/sessions/{id}/join", post(handlers::join_session))
+        .route("/sessions/{id}/invite", post(handlers::invite_to_session))
         .route(
             "/contracts",
             post(handlers::create_contract).get(handlers::list_contracts),
