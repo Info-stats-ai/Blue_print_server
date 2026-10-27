@@ -317,7 +317,7 @@ dependencies = [
 [[package]]
 name = "clock"
 version = "0.1.0"
-source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=943228c888fc19769d9f7494126e0e1f217ce973#943228c888fc19769d9f7494126e0e1f217ce973"
+source = "git+https://github.com/Info-stats-ai/I-ide.git?rev=55adcccb85493c74e36155022c968ec0ded4c0ca#55adcccb85493c74e36155022c968ec0ded4c0ca"
 dependencies = [
  "serde",
  "smallvec",
@@ -326,7 +326,7 @@ dependencies = [
 [[package]]
 name = "collections"
 version = "0.1.0"
-source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=943228c888fc19769d9f7494126e0e1f217ce973#943228c888fc19769d9f7494126e0e1f217ce973"
+source = "git+https://github.com/Info-stats-ai/I-ide.git?rev=55adcccb85493c74e36155022c968ec0ded4c0ca#55adcccb85493c74e36155022c968ec0ded4c0ca"
 dependencies = [
  "gpui_util",
  "indexmap",
@@ -807,7 +807,7 @@ dependencies = [
 [[package]]
 name = "gpui_util"
 version = "0.1.0"
-source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=943228c888fc19769d9f7494126e0e1f217ce973#943228c888fc19769d9f7494126e0e1f217ce973"
+source = "git+https://github.com/Info-stats-ai/I-ide.git?rev=55adcccb85493c74e36155022c968ec0ded4c0ca#55adcccb85493c74e36155022c968ec0ded4c0ca"
 dependencies = [
  "anyhow",
  "log",
@@ -1853,7 +1853,7 @@ dependencies = [
 [[package]]
 name = "proto"
 version = "0.1.0"
-source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=943228c888fc19769d9f7494126e0e1f217ce973#943228c888fc19769d9f7494126e0e1f217ce973"
+source = "git+https://github.com/Info-stats-ai/I-ide.git?rev=55adcccb85493c74e36155022c968ec0ded4c0ca#55adcccb85493c74e36155022c968ec0ded4c0ca"
 dependencies = [
  "anyhow",
  "prost",
@@ -2197,7 +2197,7 @@ dependencies = [
 [[package]]
 name = "rope"
 version = "0.1.0"
-source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=943228c888fc19769d9f7494126e0e1f217ce973#943228c888fc19769d9f7494126e0e1f217ce973"
+source = "git+https://github.com/Info-stats-ai/I-ide.git?rev=55adcccb85493c74e36155022c968ec0ded4c0ca#55adcccb85493c74e36155022c968ec0ded4c0ca"
 dependencies = [
  "gpui_util",
  "heapless",
@@ -2212,7 +2212,7 @@ dependencies = [
 [[package]]
 name = "rpc"
 version = "0.1.0"
-source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=943228c888fc19769d9f7494126e0e1f217ce973#943228c888fc19769d9f7494126e0e1f217ce973"
+source = "git+https://github.com/Info-stats-ai/I-ide.git?rev=55adcccb85493c74e36155022c968ec0ded4c0ca#55adcccb85493c74e36155022c968ec0ded4c0ca"
 dependencies = [
  "anyhow",
  "async-tungstenite",
@@ -2810,7 +2810,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sum_tree"
 version = "0.1.0"
-source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=943228c888fc19769d9f7494126e0e1f217ce973#943228c888fc19769d9f7494126e0e1f217ce973"
+source = "git+https://github.com/Info-stats-ai/I-ide.git?rev=55adcccb85493c74e36155022c968ec0ded4c0ca#55adcccb85493c74e36155022c968ec0ded4c0ca"
 dependencies = [
  "heapless",
  "rayon",
@@ -2876,7 +2876,7 @@ dependencies = [
 [[package]]
 name = "text"
 version = "0.1.0"
-source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=943228c888fc19769d9f7494126e0e1f217ce973#943228c888fc19769d9f7494126e0e1f217ce973"
+source = "git+https://github.com/Info-stats-ai/I-ide.git?rev=55adcccb85493c74e36155022c968ec0ded4c0ca#55adcccb85493c74e36155022c968ec0ded4c0ca"
 dependencies = [
  "anyhow",
  "clock",
@@ -3906,7 +3906,7 @@ dependencies = [
 [[package]]
 name = "ztracing"
 version = "0.1.0"
-source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=943228c888fc19769d9f7494126e0e1f217ce973#943228c888fc19769d9f7494126e0e1f217ce973"
+source = "git+https://github.com/Info-stats-ai/I-ide.git?rev=55adcccb85493c74e36155022c968ec0ded4c0ca#55adcccb85493c74e36155022c968ec0ded4c0ca"
 dependencies = [
  "tracing",
  "ztracing_macro",
@@ -3915,4 +3915,4 @@ dependencies = [
 [[package]]
 name = "ztracing_macro"
 version = "0.1.0"
-source = "git+https://github.com/Info-stats-ai/i-ide.git?rev=943228c888fc19769d9f7494126e0e1f217ce973#943228c888fc19769d9f7494126e0e1f217ce973"
+source = "git+https://github.com/Info-stats-ai/I-ide.git?rev=55adcccb85493c74e36155022c968ec0ded4c0ca#55adcccb85493c74e36155022c968ec0ded4c0ca"
