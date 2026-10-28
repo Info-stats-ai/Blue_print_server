@@ -21,7 +21,7 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 const HISTORY_WINDOW: usize = 10;
 const BLUEPRINT_HISTORY_WINDOW: usize = 15;
 
-const MENTION_SYSTEM_PROMPT_TEMPLATE: &str = "You are a coding assistant embedded in a shared IDE session helping two developers coordinate. Keep replies short and actionable. Shared blueprint reference file:\n{blueprint_content}\n\nWho has which file open right now:\n{live_activity}";
+const MENTION_SYSTEM_PROMPT_TEMPLATE: &str = "You are a coding assistant embedded in a shared IDE session helping two developers coordinate. Keep replies short and actionable. Shared blueprint reference file:\n{blueprint_content}\n\nWho has which file open right now:\n{live_activity}\n\nPending plan awaiting approval:\n{pending_plan}";
 
 // Six fixed sections, in this exact order and heading text, every time —
 // "## Work Split" in particular is parsed back out deterministically by
@@ -41,6 +41,7 @@ conversation, assign it to whichever participant most recently touched it, or to
 Under 600 words total.\n\n\
 Current participants: {participants}\n\n\
 Who has which file open right now:\n{live_activity}\n\n\
+Pending plan awaiting approval:\n{pending_plan}\n\n\
 Current file contents:\n{file_context}";
 
 // Caps each synced file's content in the blueprint prompt so a single large
@@ -132,12 +133,14 @@ pub async fn handle_mention(state: AppState, session_id: String) {
 
     let blueprint_content = state.hub.get_blueprint(&session_id).await;
     let live_activity = format_live_activity(&state.hub.get_presence(&session_id).await);
+    let pending_plan = format_pending_plan(&state.pool, &session_id).await;
     let model = model_or_fallback();
     println!("agent: replying in session {session_id} using model {model}");
 
     let system = MENTION_SYSTEM_PROMPT_TEMPLATE
         .replace("{blueprint_content}", &blueprint_content)
-        .replace("{live_activity}", &live_activity);
+        .replace("{live_activity}", &live_activity)
+        .replace("{pending_plan}", &pending_plan);
     let text = match call_anthropic(&state.http_client, &model, &system, messages).await {
         Ok((text, cost)) => {
             state.hub.record_llm_call(&session_id, cost).await;
@@ -206,12 +209,14 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
     participants.push(ws::AGENT_USER_ID.to_string());
     let participant_list = participants.join(", ");
     let live_activity = format_live_activity(&state.hub.get_presence(&session_id).await);
+    let pending_plan = format_pending_plan(&state.pool, &session_id).await;
     let model = model_or_fallback();
     println!("agent: generating blueprint in session {session_id} using model {model}");
 
     let system = BLUEPRINT_SYSTEM_PROMPT_TEMPLATE
         .replace("{participants}", &participant_list)
         .replace("{live_activity}", &live_activity)
+        .replace("{pending_plan}", &pending_plan)
         .replace("{file_context}", &file_context);
     match call_anthropic(&state.http_client, &model, &system, messages).await {
         Ok((content, cost)) => {
@@ -430,6 +435,28 @@ async fn insert_triage_plan(
         )
         .await;
     Ok(())
+}
+
+/// The most recent still-`'pending'` plan for this session, if any —
+/// folded into the agent's prompts alongside `format_live_activity` so it
+/// doesn't propose something that duplicates or contradicts a plan a
+/// human hasn't acted on yet. Mirrors the client's own
+/// `pending_plan_summary` (`blueprint_panel.rs`).
+async fn format_pending_plan(pool: &sqlx::SqlitePool, session_id: &str) -> String {
+    let plan: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT kind, author_id, content FROM execution_plans \
+         WHERE session_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(session_id)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None);
+    match plan {
+        Some((kind, author_id, content)) => {
+            format!("A {kind} plan from {author_id} is awaiting approval:\n{content}")
+        }
+        None => "(none)".to_string(),
+    }
 }
 
 /// Formats `Hub::get_presence` (user_id -> the file path they most recently
