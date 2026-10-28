@@ -21,7 +21,7 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 const HISTORY_WINDOW: usize = 10;
 const BLUEPRINT_HISTORY_WINDOW: usize = 15;
 
-const MENTION_SYSTEM_PROMPT_TEMPLATE: &str = "You are a coding assistant embedded in a shared IDE session helping two developers coordinate. Keep replies short and actionable. Shared blueprint reference file:\n{blueprint_content}";
+const MENTION_SYSTEM_PROMPT_TEMPLATE: &str = "You are a coding assistant embedded in a shared IDE session helping two developers coordinate. Keep replies short and actionable. Shared blueprint reference file:\n{blueprint_content}\n\nWho has which file open right now:\n{live_activity}";
 
 // Six fixed sections, in this exact order and heading text, every time —
 // "## Work Split" in particular is parsed back out deterministically by
@@ -40,6 +40,7 @@ conversation, assign it to whichever participant most recently touched it, or to
 ## Guardrails\nUp to 5 bullets: constraints or invariants the team must not violate.\n\n\
 Under 600 words total.\n\n\
 Current participants: {participants}\n\n\
+Who has which file open right now:\n{live_activity}\n\n\
 Current file contents:\n{file_context}";
 
 // Caps each synced file's content in the blueprint prompt so a single large
@@ -130,10 +131,13 @@ pub async fn handle_mention(state: AppState, session_id: String) {
     }
 
     let blueprint_content = state.hub.get_blueprint(&session_id).await;
+    let live_activity = format_live_activity(&state.hub.get_presence(&session_id).await);
     let model = model_or_fallback();
     println!("agent: replying in session {session_id} using model {model}");
 
-    let system = MENTION_SYSTEM_PROMPT_TEMPLATE.replace("{blueprint_content}", &blueprint_content);
+    let system = MENTION_SYSTEM_PROMPT_TEMPLATE
+        .replace("{blueprint_content}", &blueprint_content)
+        .replace("{live_activity}", &live_activity);
     let text = match call_anthropic(&state.http_client, &model, &system, messages).await {
         Ok((text, cost)) => {
             state.hub.record_llm_call(&session_id, cost).await;
@@ -201,11 +205,13 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
     let mut participants = state.hub.peer_ids(&session_id).await;
     participants.push(ws::AGENT_USER_ID.to_string());
     let participant_list = participants.join(", ");
+    let live_activity = format_live_activity(&state.hub.get_presence(&session_id).await);
     let model = model_or_fallback();
     println!("agent: generating blueprint in session {session_id} using model {model}");
 
     let system = BLUEPRINT_SYSTEM_PROMPT_TEMPLATE
         .replace("{participants}", &participant_list)
+        .replace("{live_activity}", &live_activity)
         .replace("{file_context}", &file_context);
     match call_anthropic(&state.http_client, &model, &system, messages).await {
         Ok((content, cost)) => {
@@ -424,6 +430,26 @@ async fn insert_triage_plan(
         )
         .await;
     Ok(())
+}
+
+/// Formats `Hub::get_presence` (user_id -> the file path they most recently
+/// opened) for the agent's prompt, so it can account for live activity —
+/// e.g. not proposing changes to a file someone's already in — not just the
+/// chat transcript. No per-line/row detail here: unlike the client's own
+/// richer `live_activity_summary` (which also has caret row + idle/editing
+/// status from peer-to-peer `CursorMoved` relays the server never stores),
+/// this is only ever as detailed as what `set_presence` actually persists.
+fn format_live_activity(presence: &HashMap<String, String>) -> String {
+    if presence.is_empty() {
+        return "(no one else currently active)".to_string();
+    }
+    let mut entries: Vec<_> = presence.iter().collect();
+    entries.sort_by_key(|(user_id, _)| user_id.as_str());
+    entries
+        .into_iter()
+        .map(|(user_id, path)| format!("{user_id} — {path}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Formats the files the caller selected via `Hub::relevant_files` (already
