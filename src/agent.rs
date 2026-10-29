@@ -806,9 +806,30 @@ pub(crate) async fn call_model(
     system: &str,
     messages: Vec<serde_json::Value>,
 ) -> Result<(String, f64), String> {
+    call_model_with_format(client, model, system, messages, false).await
+}
+
+/// Like `call_model`, but asks for a single JSON object back. OpenAI-style
+/// endpoints enforce that; with Anthropic the prompt alone asks for it.
+pub(crate) async fn call_model_for_json(
+    client: &reqwest::Client,
+    model: &str,
+    system: &str,
+    messages: Vec<serde_json::Value>,
+) -> Result<(String, f64), String> {
+    call_model_with_format(client, model, system, messages, true).await
+}
+
+async fn call_model_with_format(
+    client: &reqwest::Client,
+    model: &str,
+    system: &str,
+    messages: Vec<serde_json::Value>,
+    json_only: bool,
+) -> Result<(String, f64), String> {
     match std::env::var("AGENT_OPENAI_BASE_URL") {
         Ok(base_url) if !base_url.trim().is_empty() => {
-            call_openai_compatible(client, base_url.trim(), model, system, messages).await
+            call_openai_compatible(client, base_url.trim(), model, system, messages, json_only).await
         }
         _ => call_anthropic(client, model, system, messages).await,
     }
@@ -821,13 +842,18 @@ async fn call_openai_compatible(
     model: &str,
     system: &str,
     messages: Vec<serde_json::Value>,
+    json_only: bool,
 ) -> Result<(String, f64), String> {
     let mut all_messages = vec![json!({"role": "system", "content": system})];
     all_messages.extend(messages);
+    let mut body = json!({"model": model, "messages": all_messages, "max_tokens": 4096});
+    if json_only {
+        body["response_format"] = json!({"type": "json_object"});
+    }
     let mut request = client
         .post(format!("{}/chat/completions", base_url.trim_end_matches('/')))
         .timeout(MODEL_REQUEST_TIMEOUT)
-        .json(&json!({"model": model, "messages": all_messages, "max_tokens": 4096}));
+        .json(&body);
     if let Ok(api_key) = std::env::var("AGENT_OPENAI_API_KEY") {
         request = request.bearer_auth(api_key);
     }

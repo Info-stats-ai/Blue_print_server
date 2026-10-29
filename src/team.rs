@@ -420,7 +420,7 @@ async fn assign_tasks(state: &AppState, session_id: &str, requested_by: &str) ->
     let board = loop {
         attempt += 1;
         let (reply, cost) =
-            agent::call_model(&state.http_client, &model, PLANNER_SYSTEM_PROMPT, conversation.clone()).await?;
+            agent::call_model_for_json(&state.http_client, &model, PLANNER_SYSTEM_PROMPT, conversation.clone()).await?;
         state.hub.record_llm_call(session_id, cost).await;
         match parse_plan(&reply, &names, &previous, requested_by) {
             Ok(board) => break board,
