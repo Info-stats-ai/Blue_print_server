@@ -123,7 +123,9 @@ pub fn describe_anthropic_key() -> String {
         return "not set".to_string();
     };
     let trimmed = key.trim().trim_matches(|character| character == '"' || character == '\'').trim();
-    let kind = if trimmed.starts_with("sk-ant-api") {
+    let kind = if trimmed.is_empty() {
+        "set but empty"
+    } else if trimmed.starts_with("sk-ant-api") {
         "API key"
     } else if trimmed.starts_with("sk-ant-oat") {
         "Claude OAuth token, which the API rejects; create an API key at console.anthropic.com"
@@ -913,6 +915,9 @@ async fn call_anthropic(
         .trim_matches(|character| character == '"' || character == '\'')
         .trim()
         .to_string();
+    if api_key.is_empty() {
+        return Err("ANTHROPIC_API_KEY is set but empty on this server".to_string());
+    }
 
     let body = json!({
         "model": model,
