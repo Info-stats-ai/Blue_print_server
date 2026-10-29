@@ -62,7 +62,6 @@ struct SessionChannel {
     // Stable per-session replica id per user, so a reconnecting client keeps
     // the same identity in the CRDT history instead of fragmenting across
     // multiple replica ids for the same person.
-    replica_ids: HashMap<String, clock::ReplicaId>,
     next_replica_id: u16,
     // Phase 4 presence: the path each peer most recently opened, so a
     // (re)joining client can render "who's working on what" immediately
@@ -96,6 +95,13 @@ struct SessionChannel {
 // can debounce: a save that arrives, then is immediately superseded by
 // another save to the same path, never triggers its own LLM call.
 type WatcherKey = (String, String);
+
+pub struct BufferJoin {
+    pub replica_id: clock::ReplicaId,
+    pub text: String,
+    pub base_text: String,
+    pub operations: Vec<WireOperation>,
+}
 
 #[derive(Clone, Default)]
 pub struct Hub {
@@ -162,7 +168,6 @@ impl Hub {
                 file_order: Vec::new(),
                 symbols: HashMap::new(),
                 buffers: HashMap::new(),
-                replica_ids: HashMap::new(),
                 next_replica_id: clock::ReplicaId::FIRST_COLLAB_ID.as_u16(),
                 presence: HashMap::new(),
                 total_messages: 0,
@@ -617,25 +622,29 @@ impl Hub {
     /// provenance-preserving merge. A full fix needs wire-transferring the
     /// buffer's internal fragment snapshot, not just its text, which is a
     /// larger follow-up than this pass covers.
+    /// Hands out a replica for `path`. Every join gets a fresh replica id —
+    /// a reconnecting client starts its Lamport clock over, so reusing its
+    /// old id would mint timestamps the buffer has already seen and its new
+    /// edits would be dropped as duplicates. The reply carries the base text
+    /// and full operation history (not just the visible text) so the joiner
+    /// rebuilds the exact same CRDT state; offsets in later edits only line
+    /// up if deleted fragments exist on both sides.
     pub async fn join_buffer(
         &self,
         session_id: &str,
-        user_id: &str,
+        _user_id: &str,
         path: &str,
-    ) -> anyhow::Result<(clock::ReplicaId, String)> {
+    ) -> anyhow::Result<BufferJoin> {
         let mut map = self.inner.write().await;
         let channel = map
             .get_mut(session_id)
             .context("session has no active channel")?;
 
-        let replica_id = if let Some(existing) = channel.replica_ids.get(user_id) {
-            *existing
-        } else {
-            let id = clock::ReplicaId::new(channel.next_replica_id);
-            channel.next_replica_id += 1;
-            channel.replica_ids.insert(user_id.to_string(), id);
-            id
-        };
+        let replica_id = clock::ReplicaId::new(channel.next_replica_id);
+        channel.next_replica_id = channel
+            .next_replica_id
+            .checked_add(1)
+            .context("session ran out of replica ids")?;
 
         if !channel.buffers.contains_key(path) {
             let base_text = channel.files.get(path).cloned().unwrap_or_default();
@@ -650,7 +659,16 @@ impl Hub {
             .buffers
             .get(path)
             .context("buffer missing right after insertion")?;
-        Ok((replica_id, buffer.text()))
+        Ok(BufferJoin {
+            replica_id,
+            text: buffer.text(),
+            base_text: buffer.base_text().to_string(),
+            operations: buffer
+                .operations()
+                .iter()
+                .map(|(_, operation)| WireOperation::from(operation))
+                .collect(),
+        })
     }
 
     /// Applies a remote operation to the session's server-side mirror buffer
@@ -1021,7 +1039,9 @@ enum ClientMessage {
     // A model reply generated on one client (with that user's own key),
     // relayed so the whole session sees one conversation.
     AiReply { label: String, text: String },
-    FileOpen { sender: String, path: String },
+    // Clients still send a `sender` field; it's ignored (unknown fields are
+    // skipped) because the server stamps the authenticated user instead.
+    FileOpen { path: String },
     FileSave { path: String, content: String },
     // A live cursor/caret position within `path`, broadcast on a best-effort
     // basis as the sender's editor selection moves. Not persisted anywhere
@@ -1029,7 +1049,7 @@ enum ClientMessage {
     // straight through the same way `FileOpen` is, since a newly-joining
     // peer doesn't need anyone's historical cursor position, only live
     // updates from the moment they connect onward.
-    CursorMoved { sender: String, path: String, row: u32 },
+    CursorMoved { path: String, row: u32 },
     // Requests (or re-requests, after a reconnect) a CRDT replica id and the
     // current text for `path`, so the client can construct a local buffer
     // that merges correctly with everyone else's edits from this point on.
@@ -1064,16 +1084,19 @@ async fn handle_client_message(
             handle_ai_reply(state, session_id, user_id, label, text).await;
             None
         }
-        ClientMessage::FileOpen { sender, path } => {
+        // The payload's `sender` is ignored in favor of the authenticated
+        // user, same as chat, so presence can't be spoofed and every client
+        // agrees on one id per person.
+        ClientMessage::FileOpen { path } => {
             state
                 .hub
-                .set_presence(session_id, &sender, path.clone())
+                .set_presence(session_id, user_id, path.clone())
                 .await;
             state
                 .hub
                 .broadcast(
                     session_id,
-                    &json!({"type": "file_open", "sender": sender, "path": path}),
+                    &json!({"type": "file_open", "sender": user_id, "path": path}),
                 )
                 .await;
             None
@@ -1082,14 +1105,14 @@ async fn handle_client_message(
             handle_file_save_message(state, session_id, user_id, path, content).await;
             None
         }
-        ClientMessage::CursorMoved { sender, path, row } => {
+        ClientMessage::CursorMoved { path, row } => {
             state
                 .hub
                 .broadcast(
                     session_id,
                     &json!({
                         "type": "cursor_moved",
-                        "sender": sender,
+                        "sender": user_id,
                         "path": path,
                         "row": row,
                     }),
@@ -1099,11 +1122,13 @@ async fn handle_client_message(
         }
         ClientMessage::BufferJoin { path } => {
             match state.hub.join_buffer(session_id, user_id, &path).await {
-                Ok((replica_id, text)) => Some(json!({
+                Ok(join) => Some(json!({
                     "type": "buffer_joined",
                     "path": path,
-                    "replica_id": replica_id.as_u16(),
-                    "text": text,
+                    "replica_id": join.replica_id.as_u16(),
+                    "text": join.text,
+                    "base_text": join.base_text,
+                    "operations": join.operations,
                 })),
                 Err(error) => {
                     eprintln!("ws: buffer_join failed for {path} in session {session_id}: {error}");
@@ -1601,10 +1626,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejoining_replays_history_and_gets_a_fresh_replica() {
+        let hub = Hub::new();
+        hub.add_peer("s1", "alice").await;
+        hub.save_file("s1", "a.rs".to_string(), "hello world".to_string()).await;
+
+        let first = hub.join_buffer("s1", "alice", "a.rs").await.unwrap();
+        let mut alice = text::Buffer::new(first.replica_id, text::BufferId::new(1).unwrap(), first.base_text);
+        // A deletion leaves a tombstone, which is exactly what a plain-text
+        // join used to lose.
+        let delete = alice.edit([(0..6, "")]);
+        assert!(hub.apply_buffer_op("s1", "a.rs", delete).await);
+
+        let second = hub.join_buffer("s1", "alice", "a.rs").await.unwrap();
+        assert_ne!(first.replica_id, second.replica_id);
+        let mut rejoined =
+            text::Buffer::new(second.replica_id, text::BufferId::new(1).unwrap(), second.base_text);
+        rejoined.apply_ops(second.operations.into_iter().map(text::Operation::from));
+        assert_eq!(rejoined.text(), "world");
+        assert_eq!(rejoined.text(), second.text);
+
+        let append = rejoined.edit([(5..5, "!")]);
+        assert!(hub.apply_buffer_op("s1", "a.rs", append).await);
+        assert_eq!(hub.get_file("s1", "a.rs").await.as_deref(), Some("world!"));
+    }
+
+    #[tokio::test]
     async fn apply_buffer_op_increments_merge_metric() {
         let hub = Hub::new();
         hub.add_peer("s1", "alice").await;
-        let (_, _) = hub
+        hub
             .join_buffer("s1", "alice", "a.rs")
             .await
             .expect("join_buffer should succeed");
