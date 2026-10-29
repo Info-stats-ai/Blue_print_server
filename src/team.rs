@@ -320,16 +320,21 @@ pub async fn request_assignment(state: &AppState, session_id: &str, user_id: &st
     let session_id = session_id.to_string();
     let user_id = user_id.to_string();
     tokio::spawn(async move {
+        let mut last_error = None;
         loop {
-            if let Err(error) = assign_tasks(&state, &session_id, &user_id).await {
-                eprintln!("team: assignment failed in session {session_id}: {error}");
-                agent::broadcast_agent_reply(
-                    &state,
-                    &session_id,
-                    format!("(couldn't build a task plan: {error})"),
-                )
-                .await;
-            }
+            last_error = match assign_tasks(&state, &session_id, &user_id).await {
+                Ok(()) => None,
+                Err(error) => {
+                    eprintln!("team: assignment failed in session {session_id}: {error}");
+                    agent::broadcast_agent_reply(
+                        &state,
+                        &session_id,
+                        format!("(couldn't build a task plan: {error})"),
+                    )
+                    .await;
+                    Some(error)
+                }
+            };
             if !state.hub.finish_job(&session_id, "assign").await
                 || !state.hub.try_start_job(&session_id, "assign").await
             {
@@ -338,7 +343,10 @@ pub async fn request_assignment(state: &AppState, session_id: &str, user_id: &st
         }
         state
             .hub
-            .broadcast(&session_id, &json!({"type": "task_planning", "active": false}))
+            .broadcast(
+                &session_id,
+                &json!({"type": "task_planning", "active": false, "error": last_error}),
+            )
             .await;
     });
 }
