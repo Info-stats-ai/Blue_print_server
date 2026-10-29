@@ -847,8 +847,9 @@ impl Hub {
     /// milliseconds while holding it would stall unrelated operations in
     /// every *other* session behind this one file's merge — at thousands of
     /// concurrent editors, that turns a per-file cost into a server-wide one.
-    /// Returns the file's updated change summary, or `None` when the op
-    /// couldn't be applied.
+    /// Returns `None` when the op couldn't be applied, otherwise the file's
+    /// updated change summary — itself `None` when the op only seeded an
+    /// empty shared buffer with someone's existing copy, which isn't a change.
     pub async fn apply_buffer_op(
         &self,
         session_id: &str,
@@ -856,8 +857,8 @@ impl Hub {
         user_id: &str,
         origin: &str,
         operation: text::Operation,
-    ) -> Option<FileChange> {
-        let (merged_text, base_text) = {
+    ) -> Option<Option<FileChange>> {
+        let (merged_text, base_text, seeded) = {
             let mut map = self.inner.write().await;
             let channel = map.get_mut(session_id)?;
             if origin == ORIGIN_AGENT
@@ -868,8 +869,22 @@ impl Hub {
                     .insert((edit.timestamp.replica_id.as_u16(), edit.timestamp.value));
             }
             let buffer = channel.buffers.get_mut(path)?;
+            // The first person to open a file nobody has shared yet fills
+            // the empty shared buffer with their copy.
+            let seeding = buffer.base_text().is_empty() && buffer.operations().is_empty();
             buffer.apply_ops([operation]);
-            (buffer.text(), buffer.base_text().to_string())
+            let merged_text = buffer.text();
+            let base_text = if seeding {
+                channel.change_bases.insert(path.to_string(), merged_text.clone());
+                merged_text.clone()
+            } else {
+                channel
+                    .change_bases
+                    .get(path)
+                    .cloned()
+                    .unwrap_or_else(|| buffer.base_text().to_string())
+            };
+            (merged_text, base_text, seeding)
         };
         let (added, removed) = line_change_counts(&base_text, &merged_text);
 
@@ -894,15 +909,19 @@ impl Hub {
             channel.file_order.retain(|existing| existing != path);
             channel.file_order.insert(0, path.to_string());
             channel.last_activity = Instant::now();
-            let change = channel
-                .changes
-                .entry(path.to_string())
-                .or_insert_with(|| FileChange {
-                    path: path.to_string(),
-                    ..FileChange::default()
-                });
-            change.record(user_id, origin, added, removed);
-            change.clone()
+            if seeded {
+                None
+            } else {
+                let change = channel
+                    .changes
+                    .entry(path.to_string())
+                    .or_insert_with(|| FileChange {
+                        path: path.to_string(),
+                        ..FileChange::default()
+                    });
+                change.record(user_id, origin, added, removed);
+                Some(change.clone())
+            }
         };
         self.record_merge(session_id).await;
         Some(change)
@@ -1558,10 +1577,12 @@ async fn handle_client_message(
                         &json!({"type": "buffer_op", "path": path, "sender": user_id, "origin": origin, "op": op}),
                     )
                     .await;
-                state
-                    .hub
-                    .broadcast(session_id, &json!({"type": "file_change", "change": change}))
-                    .await;
+                if let Some(change) = change {
+                    state
+                        .hub
+                        .broadcast(session_id, &json!({"type": "file_change", "change": change}))
+                        .await;
+                }
                 let new_text = state
                     .hub
                     .get_file(session_id, &path)
@@ -2098,7 +2119,8 @@ mod tests {
         let change = hub
             .apply_buffer_op("s1", "a.rs", "alice", ORIGIN_AGENT, delete)
             .await
-            .expect("op should apply");
+            .expect("op should apply")
+            .expect("an edit to existing text is a change");
         assert_eq!((change.added, change.removed), (1, 1));
         assert_eq!(change.authors[0].user_id, "alice");
         assert_eq!(change.authors[0].origin, ORIGIN_AGENT);
@@ -2115,7 +2137,7 @@ mod tests {
         assert_eq!(second.agent_edits.len(), 1);
 
         let append = rejoined.edit([(5..5, "!")]);
-        assert!(hub.apply_buffer_op("s1", "a.rs", "bob", ORIGIN_HUMAN, append).await.is_some());
+        assert!(hub.apply_buffer_op("s1", "a.rs", "bob", ORIGIN_HUMAN, append).await.flatten().is_some());
         assert_eq!(hub.get_file("s1", "a.rs").await.as_deref(), Some("world!"));
         let changes = hub.get_changes("s1").await;
         assert_eq!(changes.len(), 1);
@@ -2140,6 +2162,98 @@ mod tests {
         hub.apply_buffer_op("s1", "a.rs", "alice", ORIGIN_HUMAN, operation).await;
 
         assert_eq!(hub.get_metrics("s1").await.merges_applied, 1);
+    }
+
+    /// Six people typing into the same file at once, their merges landing
+    /// on the server from eight worker threads in whatever order the
+    /// scheduler picks: every copy must still end up identical.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+    async fn concurrent_editors_on_many_threads_converge() {
+        const EDITORS: usize = 6;
+        const EDITS_EACH: usize = 40;
+        let hub = Hub::new();
+        hub.save_file("s1", "shared.py".to_string(), "base\n".to_string()).await;
+        hub.add_peer("s1", "owner").await;
+
+        let mut replicas = Vec::new();
+        for editor in 0..EDITORS {
+            let user = format!("user{editor}");
+            hub.add_peer("s1", &user).await;
+            let join = hub.join_buffer("s1", &user, "shared.py").await.unwrap();
+            let mut buffer = text::Buffer::new(join.replica_id, text::BufferId::new(1).unwrap(), join.base_text);
+            buffer.apply_ops(join.operations.into_iter().map(text::Operation::from));
+            replicas.push((user, buffer));
+        }
+
+        let mut tasks = Vec::new();
+        for (user, mut buffer) in replicas {
+            let hub = hub.clone();
+            tasks.push(tokio::spawn(async move {
+                let mut operations = Vec::new();
+                for edit in 0..EDITS_EACH {
+                    // Alternate between the start and the end so edits from
+                    // different people interleave, without ever landing in
+                    // the middle of an earlier word (which would make the
+                    // text check below meaningless).
+                    let offset = if edit % 2 == 0 { 0 } else { buffer.len() };
+                    let operation = buffer.edit([(offset..offset, format!("{user}:{edit} "))]);
+                    let origin = if edit % 2 == 0 { ORIGIN_AGENT } else { ORIGIN_HUMAN };
+                    assert!(
+                        hub.apply_buffer_op("s1", "shared.py", &user, origin, operation.clone())
+                            .await
+                            .is_some()
+                    );
+                    operations.push(operation);
+                    tokio::task::yield_now().await;
+                }
+                (buffer, operations)
+            }));
+        }
+        let mut finished = Vec::new();
+        for task in tasks {
+            finished.push(task.await.unwrap());
+        }
+
+        let all_operations: Vec<text::Operation> = finished
+            .iter()
+            .flat_map(|(_, operations)| operations.iter().cloned())
+            .collect();
+        let server_text = hub.get_file("s1", "shared.py").await.unwrap();
+        for (mut buffer, _) in finished {
+            // Each editor receives everyone's ops (its own are no-ops).
+            buffer.apply_ops(all_operations.iter().rev().cloned());
+            assert_eq!(buffer.text(), server_text);
+        }
+        for editor in 0..EDITORS {
+            for edit in 0..EDITS_EACH {
+                assert!(server_text.contains(&format!("user{editor}:{edit} ")));
+            }
+        }
+        let change = hub.get_changes("s1").await;
+        assert_eq!(change.len(), 1);
+        // Everyone shows up as an author, both as themselves and their agent.
+        assert_eq!(change[0].authors.len(), EDITORS * 2);
+        assert_eq!(hub.get_metrics("s1").await.merges_applied, (EDITORS * EDITS_EACH) as u64);
+    }
+
+    #[tokio::test]
+    async fn seeding_an_empty_shared_buffer_is_not_a_change() {
+        let hub = Hub::new();
+        hub.add_peer("s1", "alice").await;
+        let join = hub.join_buffer("s1", "alice", "readme.md").await.unwrap();
+        let mut alice = text::Buffer::new(join.replica_id, text::BufferId::new(1).unwrap(), join.base_text);
+        let seed = alice.edit([(0..0, "# Todo\nA tiny app.\n")]);
+        let seeded = hub.apply_buffer_op("s1", "readme.md", "alice", ORIGIN_HUMAN, seed).await;
+        assert!(matches!(seeded, Some(None)), "the seed op is applied but isn't a change");
+
+        let length = alice.len();
+        let edit = alice.edit([(length..length, "## Team\n")]);
+        let change = hub
+            .apply_buffer_op("s1", "readme.md", "alice", ORIGIN_HUMAN, edit)
+            .await
+            .flatten()
+            .expect("a real edit is a change");
+        assert_eq!((change.added, change.removed), (1, 0));
     }
 
     #[tokio::test]

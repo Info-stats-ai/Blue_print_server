@@ -504,11 +504,12 @@ fn parse_plan(
     requested_by: &str,
 ) -> Result<TaskBoard, String> {
     let start = reply.find('{').ok_or("the plan had no JSON in it")?;
-    let end = reply.rfind('}').ok_or("the plan had no JSON in it")?;
-    if end < start {
-        return Err("the plan had no JSON in it".to_string());
-    }
-    let raw: RawPlan = serde_json::from_str(&reply[start..=end])
+    // Read exactly one JSON object and ignore whatever follows it (models
+    // sometimes add a note, or a second object, after the plan).
+    let raw: RawPlan = serde_json::Deserializer::from_str(&reply[start..])
+        .into_iter::<RawPlan>()
+        .next()
+        .ok_or("the plan had no JSON in it")?
         .map_err(|error| format!("the plan wasn't valid JSON: {error}"))?;
     let raw_tasks: Vec<RawTask> = raw
         .tasks
@@ -643,6 +644,13 @@ mod tests {
         // A task can't depend on itself.
         assert_eq!(board.tasks[1].depends_on, vec!["t1-1".to_string()]);
         assert!(board.tasks.iter().all(|task| task.status == "todo"));
+    }
+
+    #[test]
+    fn ignores_text_after_the_plan() {
+        let reply = r#"{"tasks": [{"title": "API", "assignee": "bob"}]} Hope this helps! {"extra": 1}"#;
+        let board = parse_plan(reply, &names(), &TaskBoard::default(), "u-alice").unwrap();
+        assert_eq!(board.tasks.len(), 1);
     }
 
     #[test]
