@@ -7,7 +7,8 @@ use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{RwLock, broadcast};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use tokio::sync::{Mutex, RwLock, mpsc};
 
 use crate::AppState;
 use crate::agent;
@@ -18,9 +19,10 @@ use crate::models::{ChatMessage, Contract, Intent};
 use crate::symbols::{self, Symbol};
 use crate::team::{self, AgentActivity, TaskBoard};
 
-// Bounded so a slow consumer lags (and drops old messages) instead of letting
-// a single stalled peer back up memory or block broadcasts to everyone else.
-const BROADCAST_CAPACITY: usize = 256;
+// A connection this far behind isn't slow, it's stalled: it gets dropped
+// (and resyncs from a fresh snapshot when it reconnects) rather than holding
+// an ever-growing queue in memory. Short of that, nothing is ever skipped.
+const MAX_PENDING_PER_CONNECTION: usize = 20_000;
 
 // Chat history is kept per-session, capped to the most recent N messages, so
 // it can be used as context for the AI agent without growing unbounded. The
@@ -41,8 +43,24 @@ const WATCHER_DEBOUNCE: Duration = Duration::from_secs(3);
 /// human can never trigger the agent by impersonating it.
 pub const AGENT_USER_ID: &str = "agent";
 
+/// One open websocket's outgoing queue.
+struct Subscriber {
+    id: u64,
+    tx: mpsc::UnboundedSender<Message>,
+    pending: Arc<AtomicUsize>,
+}
+
+/// What a newly connected socket reads its outgoing messages from.
+pub struct PeerConnection {
+    pub id: u64,
+    pub rx: mpsc::UnboundedReceiver<Message>,
+    pub pending: Arc<AtomicUsize>,
+}
+
 struct SessionChannel {
-    tx: broadcast::Sender<Message>,
+    // Each connection gets every message, in the same order as everyone
+    // else: `broadcast` hands a message to all queues while holding this.
+    subscribers: std::sync::Mutex<Vec<Subscriber>>,
     peers: HashSet<String>,
     history: Vec<ChatMessage>,
     blueprint: String,
@@ -219,6 +237,10 @@ pub struct Hub {
     // (session_id, job kind) — same pattern as the blueprint pair above.
     jobs_inflight: Arc<RwLock<HashSet<(String, &'static str)>>>,
     jobs_dirty: Arc<RwLock<HashSet<(String, &'static str)>>>,
+    next_subscriber_id: Arc<AtomicU64>,
+    // Serializes storing-and-broadcasting chat per session, so every client
+    // receives messages in the order of their ids.
+    chat_locks: Arc<std::sync::Mutex<HashMap<String, Arc<Mutex<()>>>>>,
 }
 
 /// Live counters behind Phase 6's "conflicts avoided" metric overlay —
@@ -251,12 +273,12 @@ impl Hub {
         Self::default()
     }
 
-    pub async fn add_peer(&self, session_id: &str, user_id: &str) -> broadcast::Receiver<Message> {
+    pub async fn add_peer(&self, session_id: &str, user_id: &str) -> PeerConnection {
         let mut map = self.inner.write().await;
         let channel = map
             .entry(session_id.to_string())
             .or_insert_with(|| SessionChannel {
-                tx: broadcast::channel(BROADCAST_CAPACITY).0,
+                subscribers: std::sync::Mutex::new(Vec::new()),
                 peers: HashSet::new(),
                 history: Vec::new(),
                 blueprint: String::new(),
@@ -280,7 +302,36 @@ impl Hub {
             });
         channel.peers.insert(user_id.to_string());
         channel.last_activity = Instant::now();
-        channel.tx.subscribe()
+        let (tx, rx) = mpsc::unbounded_channel();
+        let id = self.next_subscriber_id.fetch_add(1, Ordering::Relaxed);
+        let pending = Arc::new(AtomicUsize::new(0));
+        if let Ok(mut subscribers) = channel.subscribers.lock() {
+            subscribers.push(Subscriber {
+                id,
+                tx,
+                pending: pending.clone(),
+            });
+        }
+        PeerConnection { id, rx, pending }
+    }
+
+    /// Stops delivering to one closed connection.
+    pub async fn unsubscribe(&self, session_id: &str, connection_id: u64) {
+        let map = self.inner.read().await;
+        if let Some(channel) = map.get(session_id)
+            && let Ok(mut subscribers) = channel.subscribers.lock()
+        {
+            subscribers.retain(|subscriber| subscriber.id != connection_id);
+        }
+    }
+
+    pub fn chat_lock(&self, session_id: &str) -> Arc<Mutex<()>> {
+        match self.chat_locks.lock() {
+            Ok(mut locks) => locks.entry(session_id.to_string()).or_default().clone(),
+            // A poisoned map only means another thread panicked mid-insert;
+            // a fresh lock still keeps this caller's own ordering correct.
+            Err(_) => Arc::default(),
+        }
     }
 
     /// Marks `user_id` as no longer connected to `session_id`. Deliberately
@@ -312,11 +363,23 @@ impl Hub {
     }
 
     pub async fn broadcast(&self, session_id: &str, value: &serde_json::Value) {
-        let text = value.to_string();
+        let message = Message::Text(value.to_string().into());
         let map = self.inner.read().await;
-        if let Some(channel) = map.get(session_id) {
-            let _ = channel.tx.send(Message::Text(text.into()));
-        }
+        let Some(channel) = map.get(session_id) else {
+            return;
+        };
+        let Ok(mut subscribers) = channel.subscribers.lock() else {
+            return;
+        };
+        subscribers.retain(|subscriber| {
+            if subscriber.pending.load(Ordering::Relaxed) >= MAX_PENDING_PER_CONNECTION {
+                eprintln!("ws: dropping a stalled connection in session {session_id}");
+                return false;
+            }
+            subscriber.pending.fetch_add(1, Ordering::Relaxed);
+            // A send only fails once the socket's task has ended.
+            subscriber.tx.send(message.clone()).is_ok()
+        });
     }
 
     /// Appends to the session's chat history, dropping the oldest entries
@@ -725,6 +788,9 @@ impl Hub {
             let mut metrics = self.metrics.write().await;
             for session_id in &evicted {
                 metrics.remove(session_id);
+            }
+            if let Ok(mut chat_locks) = self.chat_locks.lock() {
+                chat_locks.retain(|session_id, _| !evicted_set.contains(session_id.as_str()));
             }
         }
         evicted
@@ -1191,7 +1257,7 @@ async fn handle_socket(
     session_id: String,
     user_id: String,
 ) {
-    let mut rx = state.hub.add_peer(&session_id, &user_id).await;
+    let mut connection = state.hub.add_peer(&session_id, &user_id).await;
     // A channel with no files yet might be brand new, or might be an empty
     // shell the server just recreated after a restart — rehydrate from the
     // last DB checkpoint before anyone reads from it. A no-op (fast: one
@@ -1284,6 +1350,7 @@ async fn handle_socket(
         .await
         .is_err()
     {
+        state.hub.unsubscribe(&session_id, connection.id).await;
         state.hub.remove_peer(&session_id, &user_id).await;
         return;
     }
@@ -1345,21 +1412,23 @@ async fn handle_socket(
                     _ => {}
                 }
             }
-            outgoing = rx.recv() => {
+            outgoing = connection.rx.recv() => {
                 match outgoing {
-                    Ok(msg) => {
+                    Some(msg) => {
+                        connection.pending.fetch_sub(1, Ordering::Relaxed);
                         if socket.send(msg).await.is_err() {
                             break;
                         }
                     }
-                    // we fell behind the broadcast buffer; skip the missed messages and keep going
-                    Err(broadcast::error::RecvError::Lagged(_)) => {}
-                    Err(broadcast::error::RecvError::Closed) => break,
+                    // Dropped by `broadcast` as stalled; the client resyncs
+                    // when it reconnects.
+                    None => break,
                 }
             }
         }
     }
 
+    state.hub.unsubscribe(&session_id, connection.id).await;
     state.hub.remove_peer(&session_id, &user_id).await;
     state
         .hub
@@ -1697,6 +1766,8 @@ pub async fn post_chat(
     text: String,
     author: Option<String>,
 ) -> ChatMessage {
+    let chat_lock = state.hub.chat_lock(session_id);
+    let ordering = chat_lock.lock().await;
     let id = sqlx::query_scalar::<_, i64>(
         "INSERT INTO chat_messages (session_id, sender, author, text) VALUES (?, ?, ?, ?) RETURNING id",
     )
@@ -1725,6 +1796,7 @@ pub async fn post_chat(
         payload["author"] = json!(author);
     }
     state.hub.broadcast(session_id, &payload).await;
+    drop(ordering);
     team::maybe_refresh_digest(state, session_id, message.id).await;
     message
 }
