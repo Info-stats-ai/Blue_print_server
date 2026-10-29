@@ -19,6 +19,12 @@ use crate::AppState;
 
 const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(300);
 
+// Each checkpoint is a full copy of every file in the session, so keeping
+// them all grows the database without bound (a shared codebase is easily
+// megabytes per copy, every five minutes) until the volume is full and every
+// query stalls. Restoring only ever reads the newest one.
+const CHECKPOINTS_KEPT_PER_SESSION: i64 = 3;
+
 // Caps how many checkpoint writes are in flight at once. Bounded, not
 // unbounded concurrency: at thousands of active sessions, firing every
 // changed session's write at once would open thousands of simultaneous
@@ -150,8 +156,29 @@ async fn write_checkpoint(
     .bind(now)
     .execute(&state.pool)
     .await?;
+    prune_checkpoints(&state.pool, Some(session_id)).await?;
 
     Ok(())
+}
+
+/// Deletes all but the newest `CHECKPOINTS_KEPT_PER_SESSION` checkpoints of
+/// `session_id`, or of every session when `None` (run once at startup to
+/// clear any backlog). Human-authored plans are never touched.
+pub async fn prune_checkpoints(pool: &sqlx::SqlitePool, session_id: Option<&str>) -> anyhow::Result<u64> {
+    let result = sqlx::query(
+        "DELETE FROM execution_plans WHERE status = 'checkpoint' AND (?1 IS NULL OR session_id = ?1) \
+         AND id NOT IN ( \
+             SELECT id FROM ( \
+                 SELECT id, ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC) AS position \
+                 FROM execution_plans WHERE status = 'checkpoint' \
+             ) WHERE position <= ?2 \
+         )",
+    )
+    .bind(session_id)
+    .bind(CHECKPOINTS_KEPT_PER_SESSION)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
 }
 
 /// Order-independent hash of a file snapshot, so two snapshots with the same
@@ -198,5 +225,53 @@ mod tests {
     #[test]
     fn checkpoint_author_is_not_the_chat_agent_id() {
         assert_ne!(CHECKPOINT_AUTHOR_ID, AGENT_USER_ID);
+    }
+
+    #[tokio::test]
+    async fn pruning_keeps_only_the_newest_checkpoints_per_session() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let pool = crate::db::init_pool(&url).await.unwrap();
+        sqlx::query("INSERT INTO users (id, email, password_hash, created_at) VALUES ('u', 'u@x', 'h', 'now')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for session in ["s1", "s2"] {
+            sqlx::query("INSERT INTO sessions (id, name, owner_id, created_at) VALUES (?, 'n', 'u', 'now')")
+                .bind(session)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        for session in ["s1", "s2"] {
+            for minute in 0..5 {
+                sqlx::query(
+                    "INSERT INTO execution_plans (id, session_id, author_id, content, status, files, created_at, updated_at) \
+                     VALUES (?, ?, 'u', 'c', 'checkpoint', '{}', ?, ?)",
+                )
+                .bind(format!("{session}-{minute}"))
+                .bind(session)
+                .bind(format!("2026-01-01T00:0{minute}:00Z"))
+                .bind(format!("2026-01-01T00:0{minute}:00Z"))
+                .execute(&pool)
+                .await
+                .unwrap();
+            }
+        }
+        sqlx::query(
+            "INSERT INTO execution_plans (id, session_id, author_id, content, status, files, created_at, updated_at) \
+             VALUES ('human', 's1', 'u', 'plan', 'pending', NULL, '2020-01-01T00:00:00Z', '2020-01-01T00:00:00Z')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(prune_checkpoints(&pool, Some("s1")).await.unwrap(), 2);
+        assert_eq!(prune_checkpoints(&pool, None).await.unwrap(), 2);
+        let remaining: Vec<String> = sqlx::query_scalar("SELECT id FROM execution_plans ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert_eq!(remaining, vec!["human", "s1-2", "s1-3", "s1-4", "s2-2", "s2-3", "s2-4"]);
     }
 }

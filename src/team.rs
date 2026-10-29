@@ -445,6 +445,27 @@ async fn assign_tasks(state: &AppState, session_id: &str, requested_by: &str) ->
     Ok(())
 }
 
+/// The board as prompt text for agents that didn't build it.
+pub fn format_board(board: &TaskBoard) -> String {
+    if board.tasks.is_empty() {
+        return "(no tasks yet)".to_string();
+    }
+    board
+        .tasks
+        .iter()
+        .map(|task| {
+            format!(
+                "- [{}] {} — {} — files: {}",
+                task.status,
+                task.title,
+                task.assignee.as_deref().unwrap_or("unassigned"),
+                if task.files.is_empty() { "-".to_string() } else { task.files.join(", ") }
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 async fn persist_board(state: &AppState, session_id: &str, board: &TaskBoard) -> Result<(), String> {
     let encoded = serde_json::to_string(board).map_err(|error| error.to_string())?;
     sqlx::query(

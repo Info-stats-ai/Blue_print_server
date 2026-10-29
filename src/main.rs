@@ -67,6 +67,11 @@ async fn main() {
         http_client,
     };
 
+    match checkpoint::prune_checkpoints(&state.pool, None).await {
+        Ok(0) => {}
+        Ok(pruned) => println!("checkpoint: pruned {pruned} old checkpoint(s)"),
+        Err(error) => eprintln!("checkpoint: pruning old checkpoints failed: {error}"),
+    }
     tokio::spawn(checkpoint::run_checkpoint_sweep(state.clone()));
 
     // Token bucket: refills 1 req/600ms (~100/min sustained) per peer IP, burst up to 100.
