@@ -125,6 +125,9 @@ struct SessionChannel {
     // arrived by `file_save` rather than through a CRDT buffer (whose own
     // base text serves the same purpose).
     change_bases: HashMap<String, String>,
+    // How many merges each CRDT-backed file has had, so only the newest one
+    // stores its text (see `apply_buffer_op`).
+    edit_sequence: HashMap<String, u64>,
     // Per-file summary of everything changed during the session — what the
     // Changes view lists, including files a viewer doesn't have open.
     changes: HashMap<String, FileChange>,
@@ -294,6 +297,7 @@ impl Hub {
                 replica_authors: HashMap::new(),
                 agent_edits: HashSet::new(),
                 change_bases: HashMap::new(),
+                edit_sequence: HashMap::new(),
                 changes: HashMap::new(),
                 digest: String::new(),
                 digest_through_id: 0,
@@ -924,7 +928,7 @@ impl Hub {
         origin: &str,
         operation: text::Operation,
     ) -> Option<Option<FileChange>> {
-        let (merged_text, base_text, seeded) = {
+        let (merged_text, base_text, seeded, sequence) = {
             let mut map = self.inner.write().await;
             let channel = map.get_mut(session_id)?;
             if origin == ORIGIN_AGENT
@@ -950,28 +954,28 @@ impl Hub {
                     .cloned()
                     .unwrap_or_else(|| buffer.base_text().to_string())
             };
-            (merged_text, base_text, seeding)
+            let sequence = channel.edit_sequence.entry(path.to_string()).or_default();
+            *sequence += 1;
+            (merged_text, base_text, seeding, *sequence)
         };
         let (added, removed) = line_change_counts(&base_text, &merged_text);
 
         // No lock held across this — the whole point of splitting the
-        // critical section. Benign tradeoff: a concurrent merge to the same
-        // path from another peer could land in between, and the symbol
-        // index committed below would then briefly reflect an
-        // already-superseded text snapshot. That's fine for a relevance
-        // signal (see `symbols.rs`'s own doc comment — "ranked on weaker
-        // evidence," not correctness-critical); the *next* merge to this
-        // path re-parses and corrects it. `files`/`file_order`, which *do*
-        // need to end up correct, are written from `merged_text` captured
-        // under the second lock below, specific to this call's own result,
-        // not from anything read outside it.
+        // critical section. A concurrent merge to the same path can apply
+        // in between, so the results below are only stored if no newer
+        // merge has (`edit_sequence`); otherwise the newer merge's own
+        // results, computed from newer text, win — an older merge storing
+        // last would leave `files` one edit stale.
         let new_symbols = symbols::extract_symbols(path, &merged_text);
 
         let change = {
             let mut map = self.inner.write().await;
             let channel = map.get_mut(session_id)?;
-            channel.symbols.insert(path.to_string(), new_symbols);
-            channel.files.insert(path.to_string(), merged_text);
+            let is_newest = channel.edit_sequence.get(path) == Some(&sequence);
+            if is_newest {
+                channel.symbols.insert(path.to_string(), new_symbols);
+                channel.files.insert(path.to_string(), merged_text);
+            }
             channel.file_order.retain(|existing| existing != path);
             channel.file_order.insert(0, path.to_string());
             channel.last_activity = Instant::now();
@@ -985,7 +989,11 @@ impl Hub {
                         path: path.to_string(),
                         ..FileChange::default()
                     });
-                change.record(user_id, origin, added, removed);
+                if is_newest {
+                    change.record(user_id, origin, added, removed);
+                } else {
+                    change.record(user_id, origin, change.added, change.removed);
+                }
                 Some(change.clone())
             }
         };

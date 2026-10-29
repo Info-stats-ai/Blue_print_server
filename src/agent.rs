@@ -885,8 +885,14 @@ async fn call_anthropic(
     system: &str,
     messages: Vec<serde_json::Value>,
 ) -> Result<(String, f64), String> {
+    // Dashboards make it easy to paste a key with quotes or a trailing
+    // newline, which the API rejects as unauthorized.
     let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| "ANTHROPIC_API_KEY is not set".to_string())?;
+        .map_err(|_| "ANTHROPIC_API_KEY is not set".to_string())?
+        .trim()
+        .trim_matches(|character| character == '"' || character == '\'')
+        .trim()
+        .to_string();
 
     let body = json!({
         "model": model,

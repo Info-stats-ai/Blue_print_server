@@ -4,6 +4,32 @@ use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
+/// Where the database lives. A relative SQLite path (like the
+/// `sqlite:blueprint.db` the service was configured with) resolves inside the
+/// container's own disk, which is thrown away on every deploy and restart —
+/// so when a volume is mounted, a relative path is placed on the volume
+/// instead. Absolute paths and other databases are used as given.
+pub fn resolve_database_url(configured: Option<String>, volume_mount: Option<String>) -> String {
+    let Some(configured) = configured.filter(|url| !url.trim().is_empty()) else {
+        return match volume_mount {
+            Some(mount) => format!("sqlite://{}/blueprint.db", mount.trim_end_matches('/')),
+            None => "sqlite:///data/blueprint.db".to_string(),
+        };
+    };
+    let Some(mount) = volume_mount.filter(|mount| !mount.trim().is_empty()) else {
+        return configured;
+    };
+    let path = configured
+        .strip_prefix("sqlite://")
+        .or_else(|| configured.strip_prefix("sqlite:"));
+    match path {
+        Some(path) if !path.starts_with('/') && !path.starts_with(":memory:") => {
+            format!("sqlite://{}/{}", mount.trim_end_matches('/'), path.trim_start_matches("./"))
+        }
+        _ => configured,
+    }
+}
+
 pub async fn init_pool(database_url: &str) -> Result<SqlitePool, sqlx::Error> {
     create_parent_dir(database_url)?;
 
@@ -69,4 +95,26 @@ fn create_parent_dir(database_url: &str) -> Result<(), sqlx::Error> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_database_url;
+
+    #[test]
+    fn relative_sqlite_paths_move_onto_the_volume() {
+        let volume = Some("/data".to_string());
+        let resolve = |url: &str| resolve_database_url(Some(url.to_string()), volume.clone());
+        assert_eq!(resolve("sqlite:blueprint.db"), "sqlite:///data/blueprint.db");
+        assert_eq!(resolve("sqlite://./blueprint.db?mode=rwc"), "sqlite:///data/blueprint.db?mode=rwc");
+        assert_eq!(resolve("sqlite:///srv/app.db"), "sqlite:///srv/app.db");
+        assert_eq!(resolve("sqlite::memory:"), "sqlite::memory:");
+        assert_eq!(resolve_database_url(None, volume.clone()), "sqlite:///data/blueprint.db");
+    }
+
+    #[test]
+    fn without_a_volume_the_configured_url_is_kept() {
+        assert_eq!(resolve_database_url(Some("sqlite:blueprint.db".to_string()), None), "sqlite:blueprint.db");
+        assert_eq!(resolve_database_url(None, None), "sqlite:///data/blueprint.db");
+    }
 }
