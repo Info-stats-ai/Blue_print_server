@@ -1,9 +1,9 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "buildCommand": "git config --global url.\"https://${I_IDE_READ_PAT}@github.com/\".insteadOf \"https://github.com/\" && cargo build --release"
+    "buildCommand": "git config --global url.\"https://${I_IDE_READ_PAT}@github.com/\".insteadOf \"https://github.com/\" && cargo build --release && mkdir -p bin && cp target/release/blueprint-server bin/blueprint-server"
   },
   "deploy": {
-    "startCommand": "./target/release/blueprint-server"
+    "startCommand": "./bin/blueprint-server"
   }
 }
