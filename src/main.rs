@@ -9,6 +9,7 @@ mod handlers;
 mod models;
 mod oauth;
 mod symbols;
+mod team;
 mod ws;
 
 use axum::routing::{get, post, put};

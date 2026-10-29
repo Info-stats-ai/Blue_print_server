@@ -16,14 +16,21 @@ use crate::crdt::WireOperation;
 use crate::errors::AppError;
 use crate::models::{ChatMessage, Contract, Intent};
 use crate::symbols::{self, Symbol};
+use crate::team::{self, AgentActivity, TaskBoard};
 
 // Bounded so a slow consumer lags (and drops old messages) instead of letting
 // a single stalled peer back up memory or block broadcasts to everyone else.
 const BROADCAST_CAPACITY: usize = 256;
 
 // Chat history is kept per-session, capped to the most recent N messages, so
-// it can be used as context for the AI agent without growing unbounded.
+// it can be used as context for the AI agent without growing unbounded. The
+// full history lives in the `chat_messages` table.
 const CHAT_HISTORY_CAP: usize = 50;
+
+// How much history a (re)joining client gets up front; older pages are
+// fetched on demand with `chat_history`.
+const SNAPSHOT_CHAT_LIMIT: i64 = 100;
+const MAX_CHAT_PAGE: i64 = 200;
 
 // Trailing-edge debounce window for the save-watcher: a burst of saves to the
 // same path within this window collapses into a single check after the burst
@@ -89,6 +96,89 @@ struct SessionChannel {
     // would mean every session ever touched sits in memory forever; this
     // is what lets genuinely abandoned ones eventually be freed instead.
     last_activity: Instant,
+    // Which user each CRDT replica id belongs to. Every buffer join mints a
+    // fresh replica, so this is what lets a client attribute history it
+    // replays to the person who wrote it.
+    replica_authors: HashMap<u16, String>,
+    // (replica id, lamport value) of every edit an AI agent made rather than
+    // its human, so replayed history can say "bob's agent" instead of "bob".
+    agent_edits: HashSet<(u16, u32)>,
+    // What each file looked like when it entered the session, for files that
+    // arrived by `file_save` rather than through a CRDT buffer (whose own
+    // base text serves the same purpose).
+    change_bases: HashMap<String, String>,
+    // Per-file summary of everything changed during the session — what the
+    // Changes view lists, including files a viewer doesn't have open.
+    changes: HashMap<String, FileChange>,
+    // The observer's rolling summary of the discussion, and the last chat
+    // message id it covers.
+    digest: String,
+    digest_through_id: i64,
+    tasks: TaskBoard,
+    // What each person's AI agent is doing right now, if anything.
+    agent_activity: HashMap<String, AgentActivity>,
+}
+
+/// Everything changed in one file during the session, relative to how the
+/// file looked when it entered the session.
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct FileChange {
+    pub path: String,
+    pub added: usize,
+    pub removed: usize,
+    // Most recent first.
+    pub authors: Vec<ChangeAuthor>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct ChangeAuthor {
+    pub user_id: String,
+    // "human" or "agent".
+    pub origin: String,
+    pub last_changed_at: i64,
+}
+
+pub const ORIGIN_AGENT: &str = "agent";
+pub const ORIGIN_HUMAN: &str = "human";
+
+fn normalized_origin(origin: Option<&str>) -> &'static str {
+    match origin {
+        Some(ORIGIN_AGENT) => ORIGIN_AGENT,
+        _ => ORIGIN_HUMAN,
+    }
+}
+
+/// Counts lines added and removed going from `base` to `current`.
+pub fn line_change_counts(base: &str, current: &str) -> (usize, usize) {
+    use similar::{ChangeTag, TextDiff};
+    let diff = TextDiff::from_lines(base, current);
+    let mut added = 0;
+    let mut removed = 0;
+    for change in diff.iter_all_changes() {
+        match change.tag() {
+            ChangeTag::Insert => added += 1,
+            ChangeTag::Delete => removed += 1,
+            ChangeTag::Equal => {}
+        }
+    }
+    (added, removed)
+}
+
+impl FileChange {
+    fn record(&mut self, user_id: &str, origin: &str, added: usize, removed: usize) {
+        self.added = added;
+        self.removed = removed;
+        self.authors
+            .retain(|author| !(author.user_id == user_id && author.origin == origin));
+        self.authors.insert(
+            0,
+            ChangeAuthor {
+                user_id: user_id.to_string(),
+                origin: origin.to_string(),
+                last_changed_at: chrono::Utc::now().timestamp(),
+            },
+        );
+    }
 }
 
 // Tracks the latest file_save generation per (session_id, path) so the watcher
@@ -101,6 +191,8 @@ pub struct BufferJoin {
     pub text: String,
     pub base_text: String,
     pub operations: Vec<WireOperation>,
+    pub replica_authors: Vec<(u16, String)>,
+    pub agent_edits: Vec<(u16, u32)>,
 }
 
 #[derive(Clone, Default)]
@@ -123,6 +215,10 @@ pub struct Hub {
     // every peer on each change (see `broadcast_metrics`) so the overlay
     // ticks up live instead of needing a poll.
     metrics: Arc<RwLock<HashMap<String, SessionMetrics>>>,
+    // Single-flight state for the team jobs (digest, assignment), keyed by
+    // (session_id, job kind) — same pattern as the blueprint pair above.
+    jobs_inflight: Arc<RwLock<HashSet<(String, &'static str)>>>,
+    jobs_dirty: Arc<RwLock<HashSet<(String, &'static str)>>>,
 }
 
 /// Live counters behind Phase 6's "conflicts avoided" metric overlay —
@@ -173,6 +269,14 @@ impl Hub {
                 total_messages: 0,
                 last_seen_total_messages: HashMap::new(),
                 last_activity: Instant::now(),
+                replica_authors: HashMap::new(),
+                agent_edits: HashSet::new(),
+                change_bases: HashMap::new(),
+                changes: HashMap::new(),
+                digest: String::new(),
+                digest_through_id: 0,
+                tasks: TaskBoard::default(),
+                agent_activity: HashMap::new(),
             });
         channel.peers.insert(user_id.to_string());
         channel.last_activity = Instant::now();
@@ -193,6 +297,7 @@ impl Hub {
         if let Some(channel) = map.get_mut(session_id) {
             channel.peers.remove(user_id);
             channel.presence.remove(user_id);
+            channel.agent_activity.remove(user_id);
             channel
                 .last_seen_total_messages
                 .insert(user_id.to_string(), channel.total_messages);
@@ -227,6 +332,18 @@ impl Hub {
             if len > CHAT_HISTORY_CAP {
                 channel.history.drain(0..len - CHAT_HISTORY_CAP);
             }
+        }
+    }
+
+    /// Fills an empty in-memory history (a fresh process, or a channel that
+    /// was evicted) from the durable copy, so agent prompts and catch-up
+    /// digests see the discussion that happened before.
+    pub async fn seed_history_if_empty(&self, session_id: &str, messages: Vec<ChatMessage>) {
+        let mut map = self.inner.write().await;
+        if let Some(channel) = map.get_mut(session_id)
+            && channel.history.is_empty()
+        {
+            channel.history = messages;
         }
     }
 
@@ -512,6 +629,26 @@ impl Hub {
 
     /// Records one CRDT merge for the session's "conflicts avoided" metric
     /// and pushes the updated totals to every peer.
+    /// Claims the `kind` job slot for the session; when it's already taken,
+    /// records that one more run is wanted and returns false.
+    pub async fn try_start_job(&self, session_id: &str, kind: &'static str) -> bool {
+        let key = (session_id.to_string(), kind);
+        let mut inflight = self.jobs_inflight.write().await;
+        if inflight.contains(&key) {
+            self.jobs_dirty.write().await.insert(key);
+            return false;
+        }
+        inflight.insert(key);
+        true
+    }
+
+    /// Releases the slot; true when another run was requested meanwhile.
+    pub async fn finish_job(&self, session_id: &str, kind: &'static str) -> bool {
+        let key = (session_id.to_string(), kind);
+        self.jobs_inflight.write().await.remove(&key);
+        self.jobs_dirty.write().await.remove(&key)
+    }
+
     pub async fn record_merge(&self, session_id: &str) {
         self.update_metrics(session_id, |metrics| metrics.merges_applied += 1)
             .await;
@@ -632,7 +769,7 @@ impl Hub {
     pub async fn join_buffer(
         &self,
         session_id: &str,
-        _user_id: &str,
+        user_id: &str,
         path: &str,
     ) -> anyhow::Result<BufferJoin> {
         let mut map = self.inner.write().await;
@@ -645,6 +782,9 @@ impl Hub {
             .next_replica_id
             .checked_add(1)
             .context("session ran out of replica ids")?;
+        channel
+            .replica_authors
+            .insert(replica_id.as_u16(), user_id.to_string());
 
         if !channel.buffers.contains_key(path) {
             let base_text = channel.files.get(path).cloned().unwrap_or_default();
@@ -659,15 +799,36 @@ impl Hub {
             .buffers
             .get(path)
             .context("buffer missing right after insertion")?;
+        let mut replica_ids = HashSet::new();
+        let mut agent_edits = Vec::new();
+        let operations = buffer
+            .operations()
+            .iter()
+            .map(|(_, operation)| {
+                if let text::Operation::Edit(edit) = operation {
+                    let key = (edit.timestamp.replica_id.as_u16(), edit.timestamp.value);
+                    replica_ids.insert(key.0);
+                    if channel.agent_edits.contains(&key) {
+                        agent_edits.push(key);
+                    }
+                }
+                WireOperation::from(operation)
+            })
+            .collect();
+        let replica_authors = replica_ids
+            .into_iter()
+            .filter_map(|replica_id| {
+                let author = channel.replica_authors.get(&replica_id)?;
+                Some((replica_id, author.clone()))
+            })
+            .collect();
         Ok(BufferJoin {
             replica_id,
             text: buffer.text(),
             base_text: buffer.base_text().to_string(),
-            operations: buffer
-                .operations()
-                .iter()
-                .map(|(_, operation)| WireOperation::from(operation))
-                .collect(),
+            operations,
+            replica_authors,
+            agent_edits,
         })
     }
 
@@ -686,23 +847,31 @@ impl Hub {
     /// milliseconds while holding it would stall unrelated operations in
     /// every *other* session behind this one file's merge — at thousands of
     /// concurrent editors, that turns a per-file cost into a server-wide one.
+    /// Returns the file's updated change summary, or `None` when the op
+    /// couldn't be applied.
     pub async fn apply_buffer_op(
         &self,
         session_id: &str,
         path: &str,
+        user_id: &str,
+        origin: &str,
         operation: text::Operation,
-    ) -> bool {
-        let merged_text = {
+    ) -> Option<FileChange> {
+        let (merged_text, base_text) = {
             let mut map = self.inner.write().await;
-            let Some(channel) = map.get_mut(session_id) else {
-                return false;
-            };
-            let Some(buffer) = channel.buffers.get_mut(path) else {
-                return false;
-            };
+            let channel = map.get_mut(session_id)?;
+            if origin == ORIGIN_AGENT
+                && let text::Operation::Edit(edit) = &operation
+            {
+                channel
+                    .agent_edits
+                    .insert((edit.timestamp.replica_id.as_u16(), edit.timestamp.value));
+            }
+            let buffer = channel.buffers.get_mut(path)?;
             buffer.apply_ops([operation]);
-            buffer.text()
+            (buffer.text(), buffer.base_text().to_string())
         };
+        let (added, removed) = line_change_counts(&base_text, &merged_text);
 
         // No lock held across this — the whole point of splitting the
         // critical section. Benign tradeoff: a concurrent merge to the same
@@ -717,19 +886,150 @@ impl Hub {
         // not from anything read outside it.
         let new_symbols = symbols::extract_symbols(path, &merged_text);
 
-        {
+        let change = {
             let mut map = self.inner.write().await;
-            let Some(channel) = map.get_mut(session_id) else {
-                return false;
-            };
+            let channel = map.get_mut(session_id)?;
             channel.symbols.insert(path.to_string(), new_symbols);
             channel.files.insert(path.to_string(), merged_text);
             channel.file_order.retain(|existing| existing != path);
             channel.file_order.insert(0, path.to_string());
             channel.last_activity = Instant::now();
-        }
+            let change = channel
+                .changes
+                .entry(path.to_string())
+                .or_insert_with(|| FileChange {
+                    path: path.to_string(),
+                    ..FileChange::default()
+                });
+            change.record(user_id, origin, added, removed);
+            change.clone()
+        };
         self.record_merge(session_id).await;
+        Some(change)
+    }
+
+    /// Records a whole-file save in the change summary. A share of an
+    /// existing file only establishes its baseline; anything else (an agent
+    /// writing a file, a peer pushing one) counts as a change against it,
+    /// with a file the session has never seen counting as new.
+    pub async fn record_file_save(
+        &self,
+        session_id: &str,
+        path: &str,
+        user_id: &str,
+        origin: Option<&str>,
+        previous_content: Option<&str>,
+        content: &str,
+    ) -> Option<FileChange> {
+        let mut map = self.inner.write().await;
+        let channel = map.get_mut(session_id)?;
+        if channel.buffers.contains_key(path) {
+            return None;
+        }
+        if origin == Some("share") {
+            channel
+                .change_bases
+                .entry(path.to_string())
+                .or_insert_with(|| content.to_string());
+            return None;
+        }
+        let base = channel
+            .change_bases
+            .entry(path.to_string())
+            .or_insert_with(|| previous_content.unwrap_or_default().to_string())
+            .clone();
+        let (added, removed) = line_change_counts(&base, content);
+        let change = channel
+            .changes
+            .entry(path.to_string())
+            .or_insert_with(|| FileChange {
+                path: path.to_string(),
+                ..FileChange::default()
+            });
+        change.record(user_id, normalized_origin(origin), added, removed);
+        Some(change.clone())
+    }
+
+    pub async fn get_changes(&self, session_id: &str) -> Vec<FileChange> {
+        let map = self.inner.read().await;
+        let mut changes: Vec<FileChange> = map
+            .get(session_id)
+            .map(|channel| channel.changes.values().cloned().collect())
+            .unwrap_or_default();
+        changes.sort_by(|a, b| {
+            let latest = |change: &FileChange| change.authors.first().map(|author| author.last_changed_at);
+            latest(b).cmp(&latest(a)).then_with(|| a.path.cmp(&b.path))
+        });
+        changes
+    }
+
+    pub async fn get_digest(&self, session_id: &str) -> (String, i64) {
+        let map = self.inner.read().await;
+        map.get(session_id)
+            .map(|channel| (channel.digest.clone(), channel.digest_through_id))
+            .unwrap_or_default()
+    }
+
+    /// Only moves forward, so a slow digest job can't overwrite a newer one.
+    pub async fn set_digest(&self, session_id: &str, content: String, through_id: i64) -> bool {
+        let mut map = self.inner.write().await;
+        let Some(channel) = map.get_mut(session_id) else {
+            return false;
+        };
+        if through_id < channel.digest_through_id {
+            return false;
+        }
+        channel.digest = content;
+        channel.digest_through_id = through_id;
         true
+    }
+
+    pub async fn get_tasks(&self, session_id: &str) -> TaskBoard {
+        let map = self.inner.read().await;
+        map.get(session_id)
+            .map(|channel| channel.tasks.clone())
+            .unwrap_or_default()
+    }
+
+    pub async fn set_tasks(&self, session_id: &str, board: TaskBoard) {
+        let mut map = self.inner.write().await;
+        if let Some(channel) = map.get_mut(session_id) {
+            channel.tasks = board;
+        }
+    }
+
+    /// Applies `update` to the task board and returns the result, or `None`
+    /// when there's no such session.
+    pub async fn update_tasks<R>(
+        &self,
+        session_id: &str,
+        update: impl FnOnce(&mut TaskBoard) -> R,
+    ) -> Option<(R, TaskBoard)> {
+        let mut map = self.inner.write().await;
+        let channel = map.get_mut(session_id)?;
+        let result = update(&mut channel.tasks);
+        Some((result, channel.tasks.clone()))
+    }
+
+    pub async fn set_agent_activity(&self, session_id: &str, user_id: &str, activity: Option<AgentActivity>) {
+        let mut map = self.inner.write().await;
+        if let Some(channel) = map.get_mut(session_id) {
+            match activity {
+                Some(activity) => {
+                    channel.agent_activity.insert(user_id.to_string(), activity);
+                }
+                None => {
+                    channel.agent_activity.remove(user_id);
+                }
+            }
+        }
+    }
+
+    pub async fn get_agent_activity(&self, session_id: &str) -> HashMap<String, AgentActivity> {
+        let map = self.inner.read().await;
+        map.get(session_id)
+            .map(|channel| channel.agent_activity.clone())
+            .unwrap_or_default()
     }
 
     /// Ranks every synced file in the session by relevance to `query_terms`
@@ -845,7 +1145,7 @@ pub async fn ws_handler(
 
 /// A readable name for every member of the session, keyed by user id. Users
 /// only have an email on record, so the part before the "@" stands in.
-async fn member_display_names(state: &AppState, session_id: &str) -> HashMap<String, String> {
+pub(crate) async fn member_display_names(state: &AppState, session_id: &str) -> HashMap<String, String> {
     let rows: Vec<(String, String)> = sqlx::query_as(
         "SELECT users.id, users.email FROM session_members \
          JOIN users ON users.id = session_members.user_id \
@@ -895,11 +1195,23 @@ async fn handle_socket(
     // Phase 7 resume: a reconnecting client needs its files/chat history
     // back, not just contracts/intents/blueprint — those three were already
     // covered, but files and chat were previously dropped on reconnect.
-    let files = state.hub.get_all_files(&session_id).await;
-    let chat_history = state
+    let (chat_history, has_more_history) = match load_chat_page(&state, &session_id, None, SNAPSHOT_CHAT_LIMIT).await {
+        Ok(page) => page,
+        Err(error) => {
+            eprintln!("ws: loading chat history for {session_id} failed: {error}");
+            (state.hub.recent_chat_history(&session_id, CHAT_HISTORY_CAP).await, false)
+        }
+    };
+    let window_start = chat_history.len().saturating_sub(CHAT_HISTORY_CAP);
+    state
         .hub
-        .recent_chat_history(&session_id, CHAT_HISTORY_CAP)
+        .seed_history_if_empty(&session_id, chat_history[window_start..].to_vec())
         .await;
+    team::rehydrate(&state, &session_id).await;
+    let (digest, digest_through_id) = state.hub.get_digest(&session_id).await;
+    let tasks = state.hub.get_tasks(&session_id).await;
+    let changes = state.hub.get_changes(&session_id).await;
+    let agent_activity = state.hub.get_agent_activity(&session_id).await;
     let catch_up = state.hub.catch_up_digest(&session_id, &user_id).await;
     let presence = state.hub.get_presence(&session_id).await;
     let metrics = state.hub.get_metrics(&session_id).await;
@@ -929,8 +1241,15 @@ async fn handle_socket(
         "intents": intents,
         "peers": peers,
         "blueprint": blueprint,
-        "files": files,
+        // File contents aren't sent: they can be the whole codebase, and
+        // clients get each file's shared text when they open it.
         "chat_history": chat_history,
+        "has_more_history": has_more_history,
+        "digest": digest,
+        "digest_through_id": digest_through_id,
+        "tasks": tasks,
+        "changes": changes,
+        "agent_activity": agent_activity,
         "catch_up": catch_up,
         "presence": presence,
         "metrics": metrics,
@@ -1042,7 +1361,14 @@ enum ClientMessage {
     // Clients still send a `sender` field; it's ignored (unknown fields are
     // skipped) because the server stamps the authenticated user instead.
     FileOpen { path: String },
-    FileSave { path: String, content: String },
+    // `origin` says why the file is being sent: "share" (the Share button,
+    // not a change), "agent" (an AI agent wrote it), or a human edit.
+    FileSave {
+        path: String,
+        content: String,
+        #[serde(default)]
+        origin: Option<String>,
+    },
     // A live cursor/caret position within `path`, broadcast on a best-effort
     // basis as the sender's editor selection moves. Not persisted anywhere
     // (no `Hub` state, not part of `Snapshot`) — purely ephemeral, relayed
@@ -1056,7 +1382,31 @@ enum ClientMessage {
     BufferJoin { path: String },
     // A locally-generated edit operation, produced by the client's own
     // buffer, to merge into the server's mirror and relay to every other peer.
-    BufferOp { path: String, op: WireOperation },
+    BufferOp {
+        path: String,
+        op: WireOperation,
+        #[serde(default)]
+        origin: Option<String>,
+    },
+    // Asks for up to `limit` messages older than `before_id`.
+    ChatHistory {
+        before_id: i64,
+        #[serde(default)]
+        limit: Option<i64>,
+    },
+    // Turns the discussion so far into a task board with an owner per task.
+    AssignTasks,
+    TaskUpdate { id: String, status: String },
+    // What this user's AI agent is doing, so everyone (and every other
+    // agent) knows who is working on what. `None` status clears it.
+    AgentActivity {
+        #[serde(default)]
+        status: Option<String>,
+        #[serde(default)]
+        detail: Option<String>,
+        #[serde(default)]
+        task_id: Option<String>,
+    },
 }
 
 /// Parses an inbound text frame and dispatches it. The sender's identity for
@@ -1101,8 +1451,58 @@ async fn handle_client_message(
                 .await;
             None
         }
-        ClientMessage::FileSave { path, content } => {
-            handle_file_save_message(state, session_id, user_id, path, content).await;
+        ClientMessage::FileSave {
+            path,
+            content,
+            origin,
+        } => {
+            handle_file_save_message(state, session_id, user_id, path, content, origin).await;
+            None
+        }
+        ClientMessage::ChatHistory { before_id, limit } => {
+            let limit = limit.unwrap_or(SNAPSHOT_CHAT_LIMIT).clamp(1, MAX_CHAT_PAGE);
+            match load_chat_page(state, session_id, Some(before_id), limit).await {
+                Ok((messages, has_more)) => Some(json!({
+                    "type": "chat_page",
+                    "before_id": before_id,
+                    "messages": messages,
+                    "has_more": has_more,
+                })),
+                Err(error) => {
+                    eprintln!("ws: chat_history failed in session {session_id}: {error}");
+                    None
+                }
+            }
+        }
+        ClientMessage::AssignTasks => {
+            team::request_assignment(state, session_id, user_id).await;
+            None
+        }
+        ClientMessage::TaskUpdate { id, status } => {
+            team::update_task_status(state, session_id, user_id, &id, &status).await;
+            None
+        }
+        ClientMessage::AgentActivity {
+            status,
+            detail,
+            task_id,
+        } => {
+            let activity = status.map(|status| AgentActivity {
+                status,
+                detail,
+                task_id,
+            });
+            state
+                .hub
+                .set_agent_activity(session_id, user_id, activity.clone())
+                .await;
+            state
+                .hub
+                .broadcast(
+                    session_id,
+                    &json!({"type": "agent_activity", "user_id": user_id, "activity": activity}),
+                )
+                .await;
             None
         }
         ClientMessage::CursorMoved { path, row } => {
@@ -1129,6 +1529,8 @@ async fn handle_client_message(
                     "text": join.text,
                     "base_text": join.base_text,
                     "operations": join.operations,
+                    "replica_authors": join.replica_authors,
+                    "agent_edits": join.agent_edits,
                 })),
                 Err(error) => {
                     eprintln!("ws: buffer_join failed for {path} in session {session_id}: {error}");
@@ -1136,24 +1538,29 @@ async fn handle_client_message(
                 }
             }
         }
-        ClientMessage::BufferOp { path, op } => {
+        ClientMessage::BufferOp { path, op, origin } => {
             let previous_text = state
                 .hub
                 .get_file(session_id, &path)
                 .await
                 .unwrap_or_default();
+            let origin = normalized_origin(origin.as_deref());
             let operation: text::Operation = op.clone().into();
-            if state
+            if let Some(change) = state
                 .hub
-                .apply_buffer_op(session_id, &path, operation)
+                .apply_buffer_op(session_id, &path, user_id, origin, operation)
                 .await
             {
                 state
                     .hub
                     .broadcast(
                         session_id,
-                        &json!({"type": "buffer_op", "path": path, "sender": user_id, "op": op}),
+                        &json!({"type": "buffer_op", "path": path, "sender": user_id, "origin": origin, "op": op}),
                     )
+                    .await;
+                state
+                    .hub
+                    .broadcast(session_id, &json!({"type": "file_change", "change": change}))
                     .await;
                 let new_text = state
                     .hub
@@ -1236,23 +1643,73 @@ async fn is_session_owner(state: &AppState, session_id: &str, user_id: &str) -> 
     owner_id.as_deref() == Some(user_id)
 }
 
-async fn handle_chat_message(state: &AppState, session_id: &str, user_id: &str, text: String) {
-    let message = ChatMessage {
-        sender: user_id.to_string(),
-        text,
-    };
+/// Returns up to `limit` messages older than `before_id` (or the newest
+/// ones), oldest first, and whether even older ones exist.
+async fn load_chat_page(
+    state: &AppState,
+    session_id: &str,
+    before_id: Option<i64>,
+    limit: i64,
+) -> anyhow::Result<(Vec<ChatMessage>, bool)> {
+    let mut rows: Vec<ChatMessage> = sqlx::query_as(
+        "SELECT id, sender, text, author FROM chat_messages \
+         WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?",
+    )
+    .bind(session_id)
+    .bind(before_id.unwrap_or(i64::MAX))
+    .bind(limit + 1)
+    .fetch_all(&state.pool)
+    .await?;
+    let has_more = rows.len() as i64 > limit;
+    rows.truncate(limit as usize);
+    rows.reverse();
+    Ok((rows, has_more))
+}
 
+/// Stores a chat message durably, adds it to the in-memory window agents
+/// read from, and broadcasts it to the session. Every chat message the
+/// server sends goes through here, so the stored history is complete.
+pub async fn post_chat(
+    state: &AppState,
+    session_id: &str,
+    sender: &str,
+    text: String,
+    author: Option<String>,
+) -> ChatMessage {
+    let id = sqlx::query_scalar::<_, i64>(
+        "INSERT INTO chat_messages (session_id, sender, author, text) VALUES (?, ?, ?, ?) RETURNING id",
+    )
+    .bind(session_id)
+    .bind(sender)
+    .bind(&author)
+    .bind(&text)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or_else(|error| {
+        eprintln!("ws: storing chat message in session {session_id} failed: {error}");
+        0
+    });
+    let message = ChatMessage {
+        id,
+        sender: sender.to_string(),
+        text,
+        author,
+    };
     state
         .hub
         .push_chat_message(session_id, message.clone())
         .await;
-    state
-        .hub
-        .broadcast(
-            session_id,
-            &json!({"type": "chat", "sender": message.sender, "text": message.text}),
-        )
-        .await;
+    let mut payload = json!({"type": "chat", "id": message.id, "sender": message.sender, "text": message.text});
+    if let Some(author) = &message.author {
+        payload["author"] = json!(author);
+    }
+    state.hub.broadcast(session_id, &payload).await;
+    team::maybe_refresh_digest(state, session_id, message.id).await;
+    message
+}
+
+async fn handle_chat_message(state: &AppState, session_id: &str, user_id: &str, text: String) {
+    let message = post_chat(state, session_id, user_id, text, None).await;
 
     // Never let the agent's own messages re-trigger it. "@agent blueprint"
     // generates/replaces the shared blueprint; any other "@agent" mention is
@@ -1340,21 +1797,7 @@ async fn handle_ai_reply(state: &AppState, session_id: &str, user_id: &str, labe
     if !AI_REPLY_LABELS.contains(&label.as_str()) || text.trim().is_empty() {
         return;
     }
-    let message = ChatMessage {
-        sender: label,
-        text,
-    };
-    state
-        .hub
-        .push_chat_message(session_id, message.clone())
-        .await;
-    state
-        .hub
-        .broadcast(
-            session_id,
-            &json!({"type": "chat", "sender": message.sender, "text": message.text, "author": user_id}),
-        )
-        .await;
+    post_chat(state, session_id, &label, text, Some(user_id.to_string())).await;
 }
 
 const AI_REPLY_LABELS: [&str; 3] = ["AI (Ask)", "AI (Plan)", "AI (Agent)"];
@@ -1365,6 +1808,7 @@ async fn handle_file_save_message(
     user_id: &str,
     path: String,
     content: String,
+    origin: Option<String>,
 ) {
     // The agent never saves files itself, but guard against self-triggering
     // the watcher the same way chat does, for consistency.
@@ -1372,11 +1816,8 @@ async fn handle_file_save_message(
         return;
     }
 
-    let previous_content = state
-        .hub
-        .get_file(session_id, &path)
-        .await
-        .unwrap_or_default();
+    let known_content = state.hub.get_file(session_id, &path).await;
+    let previous_content = known_content.clone().unwrap_or_default();
     state
         .hub
         .save_file(session_id, path.clone(), content.clone())
@@ -1387,9 +1828,26 @@ async fn handle_file_save_message(
         .hub
         .broadcast(
             session_id,
-            &json!({"type": "file_saved", "path": path, "sender": user_id, "content": content}),
+            &json!({"type": "file_saved", "path": path, "sender": user_id, "origin": origin, "content": content}),
         )
         .await;
+    if let Some(change) = state
+        .hub
+        .record_file_save(
+            session_id,
+            &path,
+            user_id,
+            origin.as_deref(),
+            known_content.as_deref(),
+            &content,
+        )
+        .await
+    {
+        state
+            .hub
+            .broadcast(session_id, &json!({"type": "file_change", "change": change}))
+            .await;
+    }
     check_work_lane(state, session_id, &path, user_id).await;
     trigger_watcher(state, session_id, &path, &previous_content, &content).await;
 }
@@ -1403,10 +1861,9 @@ async fn handle_file_save_message(
 /// themself, is not a warning case.
 async fn check_work_lane(state: &AppState, session_id: &str, path: &str, user_id: &str) {
     let blueprint = state.hub.get_blueprint(session_id).await;
-    if blueprint.is_empty() {
-        return;
-    }
-    let owners = agent::parse_work_split(&blueprint);
+    let mut owners = agent::parse_work_split(&blueprint);
+    // The task board is the more specific assignment, so it wins.
+    owners.extend(state.hub.get_tasks(session_id).await.file_owners());
     let Some(owner) = owners.get(path) else {
         return;
     };
@@ -1528,6 +1985,7 @@ mod tests {
             ChatMessage {
                 sender: "bob".to_string(),
                 text: "hi".to_string(),
+                ..Default::default()
             },
         )
         .await;
@@ -1544,6 +2002,7 @@ mod tests {
             ChatMessage {
                 sender: "bob".to_string(),
                 text: "fixed the bug".to_string(),
+                ..Default::default()
             },
         )
         .await;
@@ -1581,7 +2040,7 @@ mod tests {
         for i in 0..70 {
             hub.push_chat_message(
                 "s1",
-                ChatMessage { sender: "bob".to_string(), text: format!("message {i}") },
+                ChatMessage { sender: "bob".to_string(), text: format!("message {i}"), ..Default::default() },
             )
             .await;
         }
@@ -1636,7 +2095,13 @@ mod tests {
         // A deletion leaves a tombstone, which is exactly what a plain-text
         // join used to lose.
         let delete = alice.edit([(0..6, "")]);
-        assert!(hub.apply_buffer_op("s1", "a.rs", delete).await);
+        let change = hub
+            .apply_buffer_op("s1", "a.rs", "alice", ORIGIN_AGENT, delete)
+            .await
+            .expect("op should apply");
+        assert_eq!((change.added, change.removed), (1, 1));
+        assert_eq!(change.authors[0].user_id, "alice");
+        assert_eq!(change.authors[0].origin, ORIGIN_AGENT);
 
         let second = hub.join_buffer("s1", "alice", "a.rs").await.unwrap();
         assert_ne!(first.replica_id, second.replica_id);
@@ -1645,10 +2110,17 @@ mod tests {
         rejoined.apply_ops(second.operations.into_iter().map(text::Operation::from));
         assert_eq!(rejoined.text(), "world");
         assert_eq!(rejoined.text(), second.text);
+        // The replayed history says who wrote it, and that it was an agent.
+        assert_eq!(second.replica_authors, vec![(first.replica_id.as_u16(), "alice".to_string())]);
+        assert_eq!(second.agent_edits.len(), 1);
 
         let append = rejoined.edit([(5..5, "!")]);
-        assert!(hub.apply_buffer_op("s1", "a.rs", append).await);
+        assert!(hub.apply_buffer_op("s1", "a.rs", "bob", ORIGIN_HUMAN, append).await.is_some());
         assert_eq!(hub.get_file("s1", "a.rs").await.as_deref(), Some("world!"));
+        let changes = hub.get_changes("s1").await;
+        assert_eq!(changes.len(), 1);
+        let authors: Vec<_> = changes[0].authors.iter().map(|author| author.user_id.as_str()).collect();
+        assert_eq!(authors, vec!["bob", "alice"]);
     }
 
     #[tokio::test]
@@ -1665,9 +2137,37 @@ mod tests {
         let buffer_id = text::BufferId::new(1).unwrap();
         let mut buffer = text::Buffer::new(clock::ReplicaId::new(5), buffer_id, String::new());
         let operation = buffer.edit([(0..0, "hello")]);
-        hub.apply_buffer_op("s1", "a.rs", operation).await;
+        hub.apply_buffer_op("s1", "a.rs", "alice", ORIGIN_HUMAN, operation).await;
 
         assert_eq!(hub.get_metrics("s1").await.merges_applied, 1);
+    }
+
+    #[tokio::test]
+    async fn file_saves_count_changes_but_shares_only_set_the_baseline() {
+        let hub = Hub::new();
+        hub.add_peer("s1", "alice").await;
+        let shared = hub
+            .record_file_save("s1", "a.py", "alice", Some("share"), None, "a\nb\n")
+            .await;
+        assert!(shared.is_none());
+        let change = hub
+            .record_file_save("s1", "a.py", "bob", Some(ORIGIN_AGENT), Some("a\nb\n"), "a\nc\nd\n")
+            .await
+            .expect("an edit after the share is a change");
+        assert_eq!((change.added, change.removed), (2, 1));
+        let created = hub
+            .record_file_save("s1", "new.py", "bob", Some(ORIGIN_AGENT), None, "x\ny\n")
+            .await
+            .expect("a new file is a change");
+        assert_eq!((created.added, created.removed), (2, 0));
+        assert_eq!(created.authors[0].origin, ORIGIN_AGENT);
+    }
+
+    #[test]
+    fn line_change_counts_counts_whole_lines() {
+        assert_eq!(line_change_counts("", ""), (0, 0));
+        assert_eq!(line_change_counts("a\n", "a\nb\n"), (1, 0));
+        assert_eq!(line_change_counts("a\nb\n", "a\n"), (0, 1));
     }
 
     #[tokio::test]

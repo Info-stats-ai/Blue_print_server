@@ -5,7 +5,7 @@ use similar::{ChangeTag, TextDiff};
 
 use crate::AppState;
 use crate::models::ChatMessage;
-use crate::ws::{self, Hub};
+use crate::ws;
 
 // The model to use when the AGENT_MODEL env var isn't set. Keep this in sync
 // with whatever the current Haiku model id is; Railway should normally
@@ -14,6 +14,9 @@ const FALLBACK_AGENT_MODEL: &str = "claude-haiku-5-5";
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+// Generating a whole task plan can take far longer than the shared HTTP
+// client's general-purpose timeout allows.
+const MODEL_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(240);
 
 // How many recent chat messages (across all senders) to send as context for
 // a normal reply vs. a blueprint-generation request (which wants more of the
@@ -113,7 +116,7 @@ pub const CROSS_FILE_SCAN_BUDGET_CHARS: usize = 20_000;
 const MAX_CROSS_FILE_MATCHES: usize = 5;
 const MAX_CROSS_FILE_CONTEXT_CHARS: usize = 2_000;
 
-fn model_or_fallback() -> String {
+pub(crate) fn model_or_fallback() -> String {
     std::env::var("AGENT_MODEL").unwrap_or_else(|_| FALLBACK_AGENT_MODEL.to_string())
 }
 
@@ -141,7 +144,7 @@ pub async fn handle_mention(state: AppState, session_id: String) {
         .replace("{blueprint_content}", &blueprint_content)
         .replace("{live_activity}", &live_activity)
         .replace("{pending_plan}", &pending_plan);
-    let text = match call_anthropic(&state.http_client, &model, &system, messages).await {
+    let text = match call_model(&state.http_client, &model, &system, messages).await {
         Ok((text, cost)) => {
             state.hub.record_llm_call(&session_id, cost).await;
             text
@@ -152,7 +155,7 @@ pub async fn handle_mention(state: AppState, session_id: String) {
         }
     };
 
-    broadcast_agent_reply(&state.hub, &session_id, text).await;
+    broadcast_agent_reply(&state, &session_id, text).await;
 }
 
 /// Single-flight wrapper around `handle_blueprint_request`: with 50 people in
@@ -230,7 +233,7 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
         .replace("{live_activity}", &live_activity)
         .replace("{pending_plan}", &pending_plan)
         .replace("{file_context}", &file_context);
-    match call_anthropic(&state.http_client, &model, &system, messages).await {
+    match call_model(&state.http_client, &model, &system, messages).await {
         Ok((content, cost)) => {
             state.hub.record_llm_call(&session_id, cost).await;
             state.hub.set_blueprint(&session_id, content.clone()).await;
@@ -241,11 +244,11 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
                     &json!({"type": "blueprint_update", "content": content}),
                 )
                 .await;
-            broadcast_agent_reply(&state.hub, &session_id, "Reference updated.".to_string()).await;
+            broadcast_agent_reply(&state, &session_id, "Reference updated.".to_string()).await;
         }
         Err(reason) => {
             eprintln!("agent: blueprint generation API error in session {session_id}: {reason}");
-            broadcast_agent_reply(&state.hub, &session_id, format!("(agent error: {reason})"))
+            broadcast_agent_reply(&state, &session_id, format!("(agent error: {reason})"))
                 .await;
         }
     }
@@ -281,7 +284,7 @@ pub async fn handle_triage_request(state: AppState, session_id: String) {
     let all_files = state.hub.get_all_files(&session_id).await;
     if all_files.is_empty() {
         broadcast_agent_reply(
-            &state.hub,
+            &state,
             &session_id,
             "Nothing synced yet to triage.".to_string(),
         )
@@ -314,7 +317,7 @@ pub async fn handle_triage_request(state: AppState, session_id: String) {
         messages
     };
 
-    match call_anthropic(&state.http_client, &model, &system, messages).await {
+    match call_model(&state.http_client, &model, &system, messages).await {
         Ok((content, cost)) => {
             state.hub.record_llm_call(&session_id, cost).await;
             let flagged_count = parse_triage_flagged(&content).len();
@@ -323,7 +326,7 @@ pub async fn handle_triage_request(state: AppState, session_id: String) {
                     "agent: failed to store triage plan for session {session_id}: {error}"
                 );
                 broadcast_agent_reply(
-                    &state.hub,
+                    &state,
                     &session_id,
                     "Triage ran, but saving the report failed.".to_string(),
                 )
@@ -332,7 +335,7 @@ pub async fn handle_triage_request(state: AppState, session_id: String) {
             }
             let noun = if flagged_count == 1 { "file" } else { "files" };
             broadcast_agent_reply(
-                &state.hub,
+                &state,
                 &session_id,
                 format!("Triage report posted — {flagged_count} {noun} flagged for review."),
             )
@@ -340,7 +343,7 @@ pub async fn handle_triage_request(state: AppState, session_id: String) {
         }
         Err(reason) => {
             eprintln!("agent: triage API error in session {session_id}: {reason}");
-            broadcast_agent_reply(&state.hub, &session_id, format!("(agent error: {reason})"))
+            broadcast_agent_reply(&state, &session_id, format!("(agent error: {reason})"))
                 .await;
         }
     }
@@ -685,7 +688,7 @@ pub async fn check_file_save(
         "File: {path}\n\nDiff of the change (+ added, - removed):\n{diff}\n\nOther synced files referencing these symbols:\n{cross_file}"
     )})];
 
-    let reply = match call_anthropic(&state.http_client, &model, &system, messages).await {
+    let reply = match call_model(&state.http_client, &model, &system, messages).await {
         Ok((reply, cost)) => {
             state.hub.record_llm_call(&session_id, cost).await;
             reply
@@ -705,20 +708,11 @@ pub async fn check_file_save(
     // half of Phase 6's conflict-prevention metric.
     state.hub.record_divergence_caught(&session_id).await;
 
-    broadcast_agent_reply(&state.hub, &session_id, reply).await;
+    broadcast_agent_reply(&state, &session_id, reply).await;
 }
 
-async fn broadcast_agent_reply(hub: &Hub, session_id: &str, text: String) {
-    let message = ChatMessage {
-        sender: ws::AGENT_USER_ID.to_string(),
-        text,
-    };
-    hub.push_chat_message(session_id, message.clone()).await;
-    hub.broadcast(
-        session_id,
-        &json!({"type": "chat", "sender": message.sender, "text": message.text}),
-    )
-    .await;
+pub(crate) async fn broadcast_agent_reply(state: &AppState, session_id: &str, text: String) {
+    ws::post_chat(state, session_id, ws::AGENT_USER_ID, text, None).await;
 }
 
 /// Maps history into Anthropic's alternating user/assistant turns, prefixing
@@ -796,6 +790,59 @@ fn estimate_cost_usd(model: &str, input_tokens: u64, output_tokens: u64) -> f64 
         + (output_tokens as f64 / 1_000_000.0) * output_rate
 }
 
+/// Calls the configured model. `AGENT_OPENAI_BASE_URL` points the server at
+/// any OpenAI-compatible endpoint instead of Anthropic (a local Ollama for
+/// development, say); otherwise the Anthropic API is used.
+pub(crate) async fn call_model(
+    client: &reqwest::Client,
+    model: &str,
+    system: &str,
+    messages: Vec<serde_json::Value>,
+) -> Result<(String, f64), String> {
+    match std::env::var("AGENT_OPENAI_BASE_URL") {
+        Ok(base_url) if !base_url.trim().is_empty() => {
+            call_openai_compatible(client, base_url.trim(), model, system, messages).await
+        }
+        _ => call_anthropic(client, model, system, messages).await,
+    }
+}
+
+/// Usage-based cost isn't known for an arbitrary endpoint, so it reports 0.
+async fn call_openai_compatible(
+    client: &reqwest::Client,
+    base_url: &str,
+    model: &str,
+    system: &str,
+    messages: Vec<serde_json::Value>,
+) -> Result<(String, f64), String> {
+    let mut all_messages = vec![json!({"role": "system", "content": system})];
+    all_messages.extend(messages);
+    let mut request = client
+        .post(format!("{}/chat/completions", base_url.trim_end_matches('/')))
+        .timeout(MODEL_REQUEST_TIMEOUT)
+        .json(&json!({"model": model, "messages": all_messages, "max_tokens": 4096}));
+    if let Ok(api_key) = std::env::var("AGENT_OPENAI_API_KEY") {
+        request = request.bearer_auth(api_key);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|error| format!("request failed: {error}"))?;
+    let status = response.status();
+    let value: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|error| format!("invalid response body: {error}"))?;
+    if !status.is_success() {
+        return Err(format!("API returned {status}"));
+    }
+    let text = value["choices"][0]["message"]["content"]
+        .as_str()
+        .ok_or_else(|| "unexpected response shape".to_string())?
+        .to_string();
+    Ok((text, 0.0))
+}
+
 /// Returns the reply text plus an estimated USD cost for the call (see
 /// `estimate_cost_usd`), so every caller can feed the session's running
 /// cost metric without duplicating the `usage` parsing.
@@ -817,6 +864,7 @@ async fn call_anthropic(
 
     let response = client
         .post(ANTHROPIC_API_URL)
+        .timeout(MODEL_REQUEST_TIMEOUT)
         .header("x-api-key", api_key)
         .header("anthropic-version", ANTHROPIC_VERSION)
         .header("content-type", "application/json")
@@ -954,10 +1002,12 @@ mod tests {
             ChatMessage {
                 sender: "alice".to_string(),
                 text: "let's fix calculate_total in invoice.rs".to_string(),
+                ..Default::default()
             },
             ChatMessage {
                 sender: "bob".to_string(),
                 text: "ok, calculate_total needs tax now".to_string(),
+                ..Default::default()
             },
         ];
         let terms = extract_query_terms(&history);

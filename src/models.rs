@@ -104,10 +104,18 @@ pub struct AuthResponse {
 
 // ---- Chat ----
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ChatMessage {
+    // The `chat_messages` row id: a stable, increasing cursor clients page
+    // back through history with. 0 only for messages built in tests.
+    #[serde(default)]
+    pub id: i64,
     pub sender: String,
     pub text: String,
+    // Who asked, on an AI reply relayed from a client, so that client can
+    // skip the echo of a reply it already shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
 }
 
 // ---- Sessions ----
