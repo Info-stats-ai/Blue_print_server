@@ -194,6 +194,18 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
         return;
     }
 
+    let session_goal: Option<String> =
+        sqlx::query_scalar("SELECT goal FROM sessions WHERE id = ?")
+            .bind(&session_id)
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None)
+            .flatten();
+    let goal_section = match session_goal.as_deref() {
+        Some(g) if !g.trim().is_empty() => format!("Session goal: {g}\n\n"),
+        _ => String::new(),
+    };
+
     let query_terms = extract_query_terms(&history);
     let files = state
         .hub
@@ -213,7 +225,7 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
     let model = model_or_fallback();
     println!("agent: generating blueprint in session {session_id} using model {model}");
 
-    let system = BLUEPRINT_SYSTEM_PROMPT_TEMPLATE
+    let system = format!("{goal_section}{}", BLUEPRINT_SYSTEM_PROMPT_TEMPLATE)
         .replace("{participants}", &participant_list)
         .replace("{live_activity}", &live_activity)
         .replace("{pending_plan}", &pending_plan)

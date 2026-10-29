@@ -867,15 +867,17 @@ async fn handle_socket(
     // everyone agrees on whether this session has a leader, who it is,
     // and what the session is actually called (a joiner otherwise has no
     // way to learn the name the creator typed — see problem.md #8).
-    let leader_info: Option<(bool, String, String)> =
-        sqlx::query_as("SELECT has_leader, owner_id, name FROM sessions WHERE id = ?")
+    let leader_info: Option<(bool, String, String, String)> =
+        sqlx::query_as("SELECT has_leader, owner_id, name, goal FROM sessions WHERE id = ?")
             .bind(&session_id)
             .fetch_optional(&state.pool)
             .await
             .unwrap_or(None);
-    let (has_leader, leader_id, session_name) = match leader_info {
-        Some((has_leader, owner_id, name)) => (has_leader, has_leader.then_some(owner_id), name),
-        None => (true, None, String::new()),
+    let (has_leader, leader_id, session_name, session_goal) = match leader_info {
+        Some((has_leader, owner_id, name, goal)) => {
+            (has_leader, has_leader.then_some(owner_id), name, goal)
+        }
+        None => (true, None, String::new(), String::new()),
     };
 
     let snapshot = json!({
@@ -892,6 +894,7 @@ async fn handle_socket(
         "has_leader": has_leader,
         "leader_id": leader_id,
         "name": session_name,
+        "goal": session_goal,
     });
 
     if socket

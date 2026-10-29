@@ -89,13 +89,14 @@ pub async fn create_session(
     let now = Utc::now();
 
     sqlx::query(
-        "INSERT INTO sessions (id, name, owner_id, created_at, has_leader) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO sessions (id, name, owner_id, created_at, has_leader, goal) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&payload.name)
     .bind(&user_id)
     .bind(now)
     .bind(payload.has_leader)
+    .bind(&payload.goal)
     .execute(&state.pool)
     .await?;
 
@@ -114,6 +115,7 @@ pub async fn create_session(
         owner_id: user_id,
         created_at: now,
         has_leader: payload.has_leader,
+        goal: payload.goal,
     };
 
     Ok(Json(SessionResponse { session }))

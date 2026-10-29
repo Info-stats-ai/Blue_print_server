@@ -20,6 +20,11 @@ pub struct Session {
     // approval, triage) over this session, or everyone's equal. See the
     // migration that added this column for why it defaults to true.
     pub has_leader: bool,
+    // What this session is building — the north-star sentence(s) the creator
+    // writes at session start. Blank for sessions created before this column
+    // was added. Fed into @agent blueprint's system prompt so the AI knows
+    // what "relevant" means when summarising the codebase.
+    pub goal: String,
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
@@ -114,6 +119,10 @@ pub struct CreateSessionRequest {
     // this existed) when the client omits it — see Session::has_leader.
     #[serde(default = "default_true")]
     pub has_leader: bool,
+    // Optional: blank when the creator skips it. Stored server-side and
+    // included in every Snapshot so all peers and @agent blueprint see it.
+    #[serde(default)]
+    pub goal: String,
 }
 
 fn default_true() -> bool {
