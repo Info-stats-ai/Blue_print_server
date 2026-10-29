@@ -116,6 +116,26 @@ pub const CROSS_FILE_SCAN_BUDGET_CHARS: usize = 20_000;
 const MAX_CROSS_FILE_MATCHES: usize = 5;
 const MAX_CROSS_FILE_CONTEXT_CHARS: usize = 2_000;
 
+/// What kind of credential `ANTHROPIC_API_KEY` holds, for the startup log —
+/// enough to spot a wrong kind of key without ever printing the key.
+pub fn describe_anthropic_key() -> String {
+    let Ok(key) = std::env::var("ANTHROPIC_API_KEY") else {
+        return "not set".to_string();
+    };
+    let trimmed = key.trim().trim_matches(|character| character == '"' || character == '\'').trim();
+    let kind = if trimmed.starts_with("sk-ant-api") {
+        "API key"
+    } else if trimmed.starts_with("sk-ant-oat") {
+        "Claude OAuth token, which the API rejects; create an API key at console.anthropic.com"
+    } else if trimmed.starts_with("sk-ant-") {
+        "unrecognized sk-ant- credential"
+    } else {
+        "not an Anthropic key"
+    };
+    let padded = if trimmed.len() != key.len() { ", had surrounding quotes or whitespace" } else { "" };
+    format!("{kind}, {} characters{padded}", trimmed.len())
+}
+
 pub(crate) fn model_or_fallback() -> String {
     std::env::var("AGENT_MODEL").unwrap_or_else(|_| FALLBACK_AGENT_MODEL.to_string())
 }
@@ -919,7 +939,15 @@ async fn call_anthropic(
         .map_err(|error| format!("failed to read response body: {error}"))?;
 
     if !status.is_success() {
-        return Err(format!("API returned {status}"));
+        // Anthropic's error body says why ("invalid x-api-key", "credit
+        // balance is too low", ...) and never echoes the key back.
+        let reason = serde_json::from_str::<serde_json::Value>(&raw_body)
+            .ok()
+            .and_then(|body| body["error"]["message"].as_str().map(str::to_string));
+        return Err(match reason {
+            Some(reason) => format!("API returned {status}: {reason}"),
+            None => format!("API returned {status}"),
+        });
     }
 
     let value: serde_json::Value = serde_json::from_str(&raw_body)

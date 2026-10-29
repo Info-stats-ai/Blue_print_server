@@ -47,6 +47,7 @@ async fn main() {
         std::env::var("RAILWAY_VOLUME_MOUNT_PATH").ok(),
     );
     println!("database: {database_url}");
+    println!("anthropic key: {}", agent::describe_anthropic_key());
     let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
 
     let pool = db::init_pool(&database_url)
