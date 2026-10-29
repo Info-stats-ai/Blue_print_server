@@ -228,6 +228,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn checkpoints_satisfy_the_author_foreign_key() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let pool = crate::db::init_pool(&url).await.unwrap();
+        sqlx::query("INSERT INTO users (id, email, password_hash, created_at) VALUES ('u', 'u@x', 'h', 'now')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO sessions (id, name, owner_id, created_at) VALUES ('s1', 'n', 'u', 'now')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        for author in [CHECKPOINT_AUTHOR_ID, AGENT_USER_ID] {
+            sqlx::query(
+                "INSERT INTO execution_plans (id, session_id, author_id, content, status, files, created_at, updated_at) \
+                 VALUES (?, 's1', ?, 'c', 'checkpoint', '{}', 'now', 'now')",
+            )
+            .bind(author)
+            .bind(author)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+    }
+
+    #[tokio::test]
     async fn pruning_keeps_only_the_newest_checkpoints_per_session() {
         let directory = tempfile::tempdir().unwrap();
         let url = format!("sqlite://{}", directory.path().join("test.db").display());
