@@ -825,6 +825,29 @@ pub async fn ws_handler(
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, state, session_id, user_id)))
 }
 
+/// A readable name for every member of the session, keyed by user id. Users
+/// only have an email on record, so the part before the "@" stands in.
+async fn member_display_names(state: &AppState, session_id: &str) -> HashMap<String, String> {
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT users.id, users.email FROM session_members \
+         JOIN users ON users.id = session_members.user_id \
+         WHERE session_members.session_id = ?",
+    )
+    .bind(session_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_else(|error| {
+        eprintln!("ws: loading member names for {session_id} failed: {error}");
+        Vec::new()
+    });
+    rows.into_iter()
+        .map(|(id, email)| {
+            let name = email.split('@').next().unwrap_or(&email).to_string();
+            (id, name)
+        })
+        .collect()
+}
+
 async fn handle_socket(
     mut socket: WebSocket,
     state: AppState,
@@ -880,6 +903,8 @@ async fn handle_socket(
         None => (true, None, String::new(), String::new()),
     };
 
+    let peer_names = member_display_names(&state, &session_id).await;
+
     let snapshot = json!({
         "type": "snapshot",
         "contracts": contracts,
@@ -895,6 +920,7 @@ async fn handle_socket(
         "leader_id": leader_id,
         "name": session_name,
         "goal": session_goal,
+        "peer_names": peer_names,
     });
 
     if socket
@@ -910,7 +936,11 @@ async fn handle_socket(
         .hub
         .broadcast(
             &session_id,
-            &json!({"type": "peer_joined", "user_id": user_id}),
+            &json!({
+                "type": "peer_joined",
+                "user_id": user_id,
+                "name": peer_names.get(&user_id),
+            }),
         )
         .await;
 
@@ -988,6 +1018,9 @@ async fn handle_socket(
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ClientMessage {
     Chat { text: String },
+    // A model reply generated on one client (with that user's own key),
+    // relayed so the whole session sees one conversation.
+    AiReply { label: String, text: String },
     FileOpen { sender: String, path: String },
     FileSave { path: String, content: String },
     // A live cursor/caret position within `path`, broadcast on a best-effort
@@ -1025,6 +1058,10 @@ async fn handle_client_message(
     match message {
         ClientMessage::Chat { text } => {
             handle_chat_message(state, session_id, user_id, text).await;
+            None
+        }
+        ClientMessage::AiReply { label, text } => {
+            handle_ai_reply(state, session_id, user_id, label, text).await;
             None
         }
         ClientMessage::FileOpen { sender, path } => {
@@ -1271,6 +1308,32 @@ async fn handle_chat_message(state: &AppState, session_id: &str, user_id: &str, 
 /// the CRDT path never both overwrite `files` for the same path at once —
 /// that double-write would silently reintroduce last-write-wins underneath
 /// the CRDT merge. The file content is never broadcast to peers.
+/// Only the client's own fixed AI labels are accepted as the sender, so a
+/// peer can't use this path to post chat under an arbitrary name. `author`
+/// lets the asking client skip the echo of a reply it already shows.
+async fn handle_ai_reply(state: &AppState, session_id: &str, user_id: &str, label: String, text: String) {
+    if !AI_REPLY_LABELS.contains(&label.as_str()) || text.trim().is_empty() {
+        return;
+    }
+    let message = ChatMessage {
+        sender: label,
+        text,
+    };
+    state
+        .hub
+        .push_chat_message(session_id, message.clone())
+        .await;
+    state
+        .hub
+        .broadcast(
+            session_id,
+            &json!({"type": "chat", "sender": message.sender, "text": message.text, "author": user_id}),
+        )
+        .await;
+}
+
+const AI_REPLY_LABELS: [&str; 3] = ["AI (Ask)", "AI (Plan)", "AI (Agent)"];
+
 async fn handle_file_save_message(
     state: &AppState,
     session_id: &str,
@@ -1292,6 +1355,15 @@ async fn handle_file_save_message(
     state
         .hub
         .save_file(session_id, path.clone(), content.clone())
+        .await;
+    // Peers decide locally whether to write it (only when they don't already
+    // have a different copy), so a share never clobbers someone's work.
+    state
+        .hub
+        .broadcast(
+            session_id,
+            &json!({"type": "file_saved", "path": path, "sender": user_id, "content": content}),
+        )
         .await;
     check_work_lane(state, session_id, &path, user_id).await;
     trigger_watcher(state, session_id, &path, &previous_content, &content).await;
