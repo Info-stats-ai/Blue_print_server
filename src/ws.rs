@@ -1030,7 +1030,10 @@ impl Hub {
     ) -> Option<FileChange> {
         let mut map = self.inner.write().await;
         let channel = map.get_mut(session_id)?;
-        if channel.buffers.contains_key(path) {
+        // Edits to a live buffer are counted as they arrive, but a buffer
+        // that was only seeded (opened, never edited) has none: its Sync is
+        // the change, or it never shows up in the session's change list.
+        if channel.buffers.contains_key(path) && channel.changes.contains_key(path) {
             return None;
         }
         if origin == Some("share") {
@@ -1040,11 +1043,19 @@ impl Hub {
                 .or_insert_with(|| content.to_string());
             return None;
         }
-        let base = channel
-            .change_bases
-            .entry(path.to_string())
-            .or_insert_with(|| previous_content.unwrap_or_default().to_string())
-            .clone();
+        let base = if channel.buffers.contains_key(path) {
+            // Seeding set the baseline to the opener's own copy; measure
+            // against what the team last had instead.
+            let base = previous_content.unwrap_or_default().to_string();
+            channel.change_bases.insert(path.to_string(), base.clone());
+            base
+        } else {
+            channel
+                .change_bases
+                .entry(path.to_string())
+                .or_insert_with(|| previous_content.unwrap_or_default().to_string())
+                .clone()
+        };
         let (added, removed) = line_change_counts(&base, content);
         let change = channel
             .changes
@@ -2423,6 +2434,28 @@ mod tests {
             .flatten()
             .expect("a real edit is a change");
         assert_eq!((change.added, change.removed), (1, 0));
+    }
+
+    #[tokio::test]
+    async fn syncing_a_file_that_was_only_opened_is_a_change() {
+        let hub = Hub::new();
+        hub.add_peer("s1", "bob").await;
+        let join = hub.join_buffer("s1", "bob", "ml/model.py").await.unwrap();
+        let mut bob = text::Buffer::new(join.replica_id, text::BufferId::new(1).unwrap(), join.base_text);
+        let seed = bob.edit([(0..0, "def predict(m):\n    return 'billing'\n")]);
+        hub.apply_buffer_op("s1", "ml/model.py", "bob", ORIGIN_HUMAN, seed).await;
+
+        let change = hub
+            .record_file_save("s1", "ml/model.py", "bob", Some(ORIGIN_AGENT), None, &bob.text())
+            .await
+            .expect("syncing an opened, unedited file still lists it");
+        assert_eq!((change.added, change.removed), (2, 0));
+
+        // Once listed, further saves of the live buffer aren't counted twice.
+        let again = hub
+            .record_file_save("s1", "ml/model.py", "bob", Some(ORIGIN_AGENT), None, &bob.text())
+            .await;
+        assert!(again.is_none());
     }
 
     #[tokio::test]
