@@ -66,6 +66,27 @@ SESSION=$(curl -s -X POST "$BASE/sessions" -H "authorization: Bearer $ALICE_TOKE
 curl -s -o /dev/null -X POST "$BASE/sessions/$SESSION/join" -H "authorization: Bearer $BOB_TOKEN"
 echo "$SESSION" >"$STATE/session_id"
 
+# Wrap the dev binary in an .app (a hard link, no copy) so macOS treats the
+# demo windows as a real app: Dock icon, screen recording pickers, etc. It must
+# live inside the i-ide checkout: dev builds find their assets via its .git.
+APP="$HOME/i-ide/target/demo/IIdeDev.app"
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS"
+ln "$IDE" "$APP/Contents/MacOS/i-ide" 2>/dev/null || cp "$IDE" "$APP/Contents/MacOS/i-ide"
+cat >"$APP/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>dev.iide.debug</string>
+  <key>CFBundleName</key><string>IIdeDev</string>
+  <key>CFBundleExecutable</key><string>i-ide</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+PLIST
+
 launch() {
   local name=$1 token=$2 user_id=$3
   local home="$STATE/$name"
@@ -79,11 +100,18 @@ launch() {
 JSON
   # Linked, not copied, so the demo windows see your saved AI keys.
   [ -f "$CREDENTIALS" ] && ln -s "$CREDENTIALS" "$home/data/config/development_credentials"
-  env BLUEPRINT_HTTP_URL="$BASE" BLUEPRINT_SERVER_URL="ws://127.0.0.1:$PORT/ws" \
-    BLUEPRINT_DEV_TOKEN="$token" BLUEPRINT_DEV_USER_ID="$user_id" \
-    nohup "$IDE" --user-data-dir "$home/data" "$home/tiny-tasks" "i-ide://i-mode/join/$SESSION" \
-    >"$home/ide.log" 2>&1 </dev/null &
-  echo $! >"$STATE/$name.pid"
+  open -n "$APP" \
+    --env BLUEPRINT_HTTP_URL="$BASE" --env BLUEPRINT_SERVER_URL="ws://127.0.0.1:$PORT/ws" \
+    --env BLUEPRINT_DEV_TOKEN="$token" --env BLUEPRINT_DEV_USER_ID="$user_id" \
+    --stdout "$home/ide.log" --stderr "$home/ide.log" \
+    --args --user-data-dir "$home/data" "$home/tiny-tasks" "i-ide://i-mode/join/$SESSION"
+  # `open` returns before the app's pid is known; find it by its data dir.
+  for _ in $(seq 1 40); do
+    pid=$(pgrep -f -- "--user-data-dir $home/data" | head -1 || true)
+    [ -n "$pid" ] && break
+    sleep 0.25
+  done
+  echo "${pid:-}" >"$STATE/$name.pid"
 }
 
 launch alice "$ALICE_TOKEN" "$ALICE_ID"
