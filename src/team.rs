@@ -337,7 +337,7 @@ pub async fn request_assignment(state: &AppState, session_id: &str, user_id: &st
     let session_id = session_id.to_string();
     let user_id = user_id.to_string();
     tokio::spawn(async move {
-        let mut last_error = None;
+        let mut last_error;
         loop {
             last_error = match assign_tasks(&state, &session_id, &user_id).await {
                 Ok(()) => None,

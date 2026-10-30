@@ -28,14 +28,6 @@ pub struct Session {
 }
 
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
-pub struct SessionMember {
-    pub session_id: String,
-    pub user_id: String,
-    pub role: String,
-    pub joined_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 pub struct Contract {
     pub id: String,
     pub session_id: String,
