@@ -1579,7 +1579,14 @@ fn files_for_catch_up(files: HashMap<String, String>) -> (Vec<serde_json::Value>
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ClientMessage {
-    Chat { text: String },
+    Chat {
+        text: String,
+        // The sender's own AI is handling an "@agent" mention (it can reach
+        // their files and run commands; the server's agent can't), so the
+        // server shouldn't also answer it.
+        #[serde(default)]
+        local_agent: bool,
+    },
     // Someone joining (or rejoining) catches up on the files the team
     // synced while they weren't connected.
     FilesRequest,
@@ -1656,8 +1663,8 @@ async fn handle_client_message(
     };
 
     match message {
-        ClientMessage::Chat { text } => {
-            handle_chat_message(state, session_id, user_id, text).await;
+        ClientMessage::Chat { text, local_agent } => {
+            handle_chat_message(state, session_id, user_id, text, local_agent).await;
             None
         }
         ClientMessage::AiReply { label, text } => {
@@ -1956,7 +1963,13 @@ pub async fn post_chat(
     message
 }
 
-async fn handle_chat_message(state: &AppState, session_id: &str, user_id: &str, text: String) {
+async fn handle_chat_message(
+    state: &AppState,
+    session_id: &str,
+    user_id: &str,
+    text: String,
+    local_agent: bool,
+) {
     let message = post_chat(state, session_id, user_id, text, None).await;
 
     // Never let the agent's own messages re-trigger it. "@agent blueprint"
@@ -2021,7 +2034,7 @@ async fn handle_chat_message(state: &AppState, session_id: &str, user_id: &str, 
         tokio::spawn(async move {
             agent::run_triage_job(state, session_id).await;
         });
-    } else if lowered.contains("@agent") {
+    } else if lowered.contains("@agent") && !local_agent {
         let state = state.clone();
         let session_id = session_id.to_string();
         tokio::spawn(async move {
