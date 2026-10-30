@@ -154,7 +154,7 @@ pub struct FileClaim {
 
 /// Everything changed in one file during the session, relative to how the
 /// file looked when it entered the session.
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct FileChange {
     pub path: String,
     pub added: usize,
@@ -163,7 +163,7 @@ pub struct FileChange {
     pub authors: Vec<ChangeAuthor>,
 }
 
-#[derive(Clone, Debug, Serialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ChangeAuthor {
     pub user_id: String,
     // "human" or "agent".
@@ -1081,6 +1081,20 @@ impl Hub {
         changes
     }
 
+    /// Restores a session's change list after a restart, unless changes
+    /// have already been recorded since.
+    pub async fn restore_changes(&self, session_id: &str, changes: Vec<FileChange>) {
+        let mut map = self.inner.write().await;
+        if let Some(channel) = map.get_mut(session_id)
+            && channel.changes.is_empty()
+        {
+            channel.changes = changes
+                .into_iter()
+                .map(|change| (change.path.clone(), change))
+                .collect();
+        }
+    }
+
     pub async fn get_digest(&self, session_id: &str) -> (String, i64) {
         let map = self.inner.read().await;
         map.get(session_id)
@@ -1516,6 +1530,30 @@ async fn handle_socket(
         .await;
 }
 
+/// Stores the session's change list so it outlives a server restart.
+async fn persist_changes(state: &AppState, session_id: &str) {
+    let changes = state.hub.get_changes(session_id).await;
+    let encoded = match serde_json::to_string(&changes) {
+        Ok(encoded) => encoded,
+        Err(error) => {
+            eprintln!("ws: encoding changes for {session_id} failed: {error}");
+            return;
+        }
+    };
+    if let Err(error) = sqlx::query(
+        "INSERT INTO session_changes (session_id, changes) VALUES (?, ?) \
+         ON CONFLICT(session_id) DO UPDATE SET changes = excluded.changes, \
+         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+    )
+    .bind(session_id)
+    .bind(encoded)
+    .execute(&state.pool)
+    .await
+    {
+        eprintln!("ws: saving changes for {session_id} failed: {error}");
+    }
+}
+
 /// Most a catch-up reply carries, so one join can't flood a client.
 const CATCH_UP_MAX_BYTES: usize = 8 * 1024 * 1024;
 
@@ -1767,6 +1805,7 @@ async fn handle_client_message(
                         .hub
                         .broadcast(session_id, &json!({"type": "file_change", "change": change}))
                         .await;
+                    persist_changes(state, session_id).await;
                 }
                 let new_text = state
                     .hub
@@ -2056,6 +2095,7 @@ async fn handle_file_save_message(
             .hub
             .broadcast(session_id, &json!({"type": "file_change", "change": change}))
             .await;
+        persist_changes(state, session_id).await;
     }
     check_work_lane(state, session_id, &path, user_id).await;
     trigger_watcher(state, session_id, &path, &previous_content, &content).await;
@@ -2463,6 +2503,30 @@ mod tests {
             .flatten()
             .expect("a real edit is a change");
         assert_eq!((change.added, change.removed), (1, 0));
+    }
+
+    #[tokio::test]
+    async fn restored_changes_fill_an_empty_list_but_never_replace_new_ones() {
+        let hub = Hub::new();
+        hub.add_peer("s1", "alice").await;
+        let saved = FileChange {
+            path: "server/app.js".to_string(),
+            added: 16,
+            removed: 0,
+            authors: vec![ChangeAuthor {
+                user_id: "laura".to_string(),
+                origin: ORIGIN_AGENT.to_string(),
+                last_changed_at: 1,
+            }],
+        };
+        let encoded = serde_json::to_string(&vec![saved]).unwrap();
+        let decoded: Vec<FileChange> = serde_json::from_str(&encoded).unwrap();
+        hub.restore_changes("s1", decoded.clone()).await;
+        assert_eq!(hub.get_changes("s1").await[0].path, "server/app.js");
+
+        hub.record_file_save("s1", "ml/model.py", "bob", Some(ORIGIN_HUMAN), None, "x\n").await;
+        hub.restore_changes("s1", decoded).await;
+        assert_eq!(hub.get_changes("s1").await.len(), 2, "a restore never drops newer changes");
     }
 
     #[test]

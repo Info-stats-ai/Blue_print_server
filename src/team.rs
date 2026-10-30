@@ -132,6 +132,23 @@ pub async fn rehydrate(state: &AppState, session_id: &str) {
             state.hub.set_digest(session_id, content, through_id).await;
         }
     }
+    if state.hub.get_changes(session_id).await.is_empty() {
+        let row: Option<String> =
+            sqlx::query_scalar("SELECT changes FROM session_changes WHERE session_id = ?")
+                .bind(session_id)
+                .fetch_optional(&state.pool)
+                .await
+                .unwrap_or_else(|error| {
+                    eprintln!("team: loading changes for {session_id} failed: {error}");
+                    None
+                });
+        if let Some(changes) = row {
+            match serde_json::from_str::<Vec<crate::ws::FileChange>>(&changes) {
+                Ok(changes) => state.hub.restore_changes(session_id, changes).await,
+                Err(error) => eprintln!("team: stored changes for {session_id} are invalid: {error}"),
+            }
+        }
+    }
     if state.hub.get_tasks(session_id).await.tasks.is_empty() {
         let row: Option<String> =
             sqlx::query_scalar("SELECT board FROM session_tasks WHERE session_id = ?")
