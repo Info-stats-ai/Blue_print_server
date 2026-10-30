@@ -38,11 +38,10 @@ pub async fn send_invite(
     let subject = format!("{inviter_email} invited you to \u{201c}{session_name}\u{201d} on I");
     let text = format!(
         "{inviter_email} invited you to collaborate on \u{201c}{session_name}\u{201d} in the I IDE.\n\n\
-         To join:\n\
-         1. Open the I IDE app.\n\
-         2. Open the Reference panel and turn on I-mode if it isn't already.\n\
-         3. Sign in (or create an account).\n\
-         4. Paste this session ID into \u{201c}Join Session\u{201d}:\n\n\
+         Open this link on a computer with the I IDE installed to join:\n\n\
+         i-ide://i-mode/join/{session_id}\n\n\
+         If the link doesn't open the app, choose \u{201c}Join session\u{2026}\u{201d} from the people menu \
+         next to the I-mode switch and paste the link or this ID:\n\n\
          {session_id}\n"
     );
 
