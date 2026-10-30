@@ -1516,10 +1516,35 @@ async fn handle_socket(
         .await;
 }
 
+/// Most a catch-up reply carries, so one join can't flood a client.
+const CATCH_UP_MAX_BYTES: usize = 8 * 1024 * 1024;
+
+/// The session's files for someone catching up, by path, up to
+/// `CATCH_UP_MAX_BYTES`; the flag says whether any were left out.
+fn files_for_catch_up(files: HashMap<String, String>) -> (Vec<serde_json::Value>, bool) {
+    let mut files: Vec<(String, String)> = files.into_iter().collect();
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    let mut total = 0;
+    let mut included = Vec::new();
+    let mut truncated = false;
+    for (path, content) in files {
+        if total + content.len() > CATCH_UP_MAX_BYTES {
+            truncated = true;
+            continue;
+        }
+        total += content.len();
+        included.push(json!({"path": path, "content": content}));
+    }
+    (included, truncated)
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ClientMessage {
     Chat { text: String },
+    // Someone joining (or rejoining) catches up on the files the team
+    // synced while they weren't connected.
+    FilesRequest,
     // A model reply generated on one client (with that user's own key),
     // relayed so the whole session sees one conversation.
     AiReply { label: String, text: String },
@@ -1640,6 +1665,10 @@ async fn handle_client_message(
                     None
                 }
             }
+        }
+        ClientMessage::FilesRequest => {
+            let (files, truncated) = files_for_catch_up(state.hub.get_all_files(session_id).await);
+            Some(json!({"type": "session_files", "files": files, "truncated": truncated}))
         }
         ClientMessage::AssignTasks => {
             team::request_assignment(state, session_id, user_id).await;
@@ -2434,6 +2463,19 @@ mod tests {
             .flatten()
             .expect("a real edit is a change");
         assert_eq!((change.added, change.removed), (1, 0));
+    }
+
+    #[test]
+    fn catch_up_returns_files_by_path_within_the_cap() {
+        let files = HashMap::from([
+            ("b.py".to_string(), "b".to_string()),
+            ("a.py".to_string(), "a".to_string()),
+            ("huge.bin".to_string(), "x".repeat(CATCH_UP_MAX_BYTES)),
+        ]);
+        let (included, truncated) = files_for_catch_up(files);
+        let paths: Vec<&str> = included.iter().map(|file| file["path"].as_str().unwrap()).collect();
+        assert_eq!(paths, vec!["a.py", "b.py"]);
+        assert!(truncated);
     }
 
     #[tokio::test]
