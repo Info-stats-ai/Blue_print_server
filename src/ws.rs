@@ -138,6 +138,18 @@ struct SessionChannel {
     tasks: TaskBoard,
     // What each person's AI agent is doing right now, if anything.
     agent_activity: HashMap<String, AgentActivity>,
+    // Files each person's agents are editing right now: user id -> claims.
+    // One agent per file; the first claim on a path wins.
+    claims: HashMap<String, Vec<FileClaim>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct FileClaim {
+    pub path: String,
+    // Which of the user's agents, e.g. "agent panel" or "I-mode agent".
+    pub holder: String,
+    #[serde(default)]
+    pub user_id: Option<String>,
 }
 
 /// Everything changed in one file during the session, relative to how the
@@ -303,6 +315,7 @@ impl Hub {
                 digest_through_id: 0,
                 tasks: TaskBoard::default(),
                 agent_activity: HashMap::new(),
+                claims: HashMap::new(),
             });
         channel.peers.insert(user_id.to_string());
         channel.last_activity = Instant::now();
@@ -353,6 +366,7 @@ impl Hub {
             channel.peers.remove(user_id);
             channel.presence.remove(user_id);
             channel.agent_activity.remove(user_id);
+            channel.claims.remove(user_id);
             channel
                 .last_seen_total_messages
                 .insert(user_id.to_string(), channel.total_messages);
@@ -1118,6 +1132,42 @@ impl Hub {
         }
     }
 
+    /// Replaces `user_id`'s claims, keeping any path another user already
+    /// holds with that user, and returns everyone's claims.
+    pub async fn set_claims(&self, session_id: &str, user_id: &str, claims: Vec<FileClaim>) -> Vec<FileClaim> {
+        let mut map = self.inner.write().await;
+        let Some(channel) = map.get_mut(session_id) else {
+            return Vec::new();
+        };
+        let held_by_others: HashSet<String> = channel
+            .claims
+            .iter()
+            .filter(|(owner, _)| owner.as_str() != user_id)
+            .flat_map(|(_, claims)| claims.iter().map(|claim| claim.path.clone()))
+            .collect();
+        let mine = claims
+            .into_iter()
+            .filter(|claim| !held_by_others.contains(&claim.path))
+            .map(|claim| FileClaim {
+                user_id: Some(user_id.to_string()),
+                ..claim
+            })
+            .collect();
+        channel.claims.insert(user_id.to_string(), mine);
+        Self::all_claims(channel)
+    }
+
+    pub async fn get_claims(&self, session_id: &str) -> Vec<FileClaim> {
+        let map = self.inner.read().await;
+        map.get(session_id).map(Self::all_claims).unwrap_or_default()
+    }
+
+    fn all_claims(channel: &SessionChannel) -> Vec<FileClaim> {
+        let mut claims: Vec<FileClaim> = channel.claims.values().flatten().cloned().collect();
+        claims.sort_by(|a, b| a.path.cmp(&b.path));
+        claims
+    }
+
     pub async fn get_agent_activity(&self, session_id: &str) -> HashMap<String, AgentActivity> {
         let map = self.inner.read().await;
         map.get(session_id)
@@ -1305,6 +1355,7 @@ async fn handle_socket(
     let tasks = state.hub.get_tasks(&session_id).await;
     let changes = state.hub.get_changes(&session_id).await;
     let agent_activity = state.hub.get_agent_activity(&session_id).await;
+    let claims = state.hub.get_claims(&session_id).await;
     let catch_up = state.hub.catch_up_digest(&session_id, &user_id).await;
     let presence = state.hub.get_presence(&session_id).await;
     let metrics = state.hub.get_metrics(&session_id).await;
@@ -1343,6 +1394,7 @@ async fn handle_socket(
         "tasks": tasks,
         "changes": changes,
         "agent_activity": agent_activity,
+        "claims": claims,
         "catch_up": catch_up,
         "presence": presence,
         "metrics": metrics,
@@ -1445,6 +1497,12 @@ async fn handle_socket(
             &json!({"type": "peer_left", "user_id": user_id}),
         )
         .await;
+    // Their agents stopped with them, so their files are free again.
+    let claims = state.hub.get_claims(&session_id).await;
+    state
+        .hub
+        .broadcast(&session_id, &json!({"type": "claims", "claims": claims}))
+        .await;
 }
 
 #[derive(Debug, Deserialize)]
@@ -1493,6 +1551,8 @@ enum ClientMessage {
     // Turns the discussion so far into a task board with an owner per task.
     AssignTasks,
     TaskUpdate { id: String, status: String },
+    // The files this user's agents hold right now, replacing the last set.
+    SetClaims { claims: Vec<FileClaim> },
     // What this user's AI agent is doing, so everyone (and every other
     // agent) knows who is working on what. `None` status clears it.
     AgentActivity {
@@ -1572,6 +1632,14 @@ async fn handle_client_message(
         }
         ClientMessage::AssignTasks => {
             team::request_assignment(state, session_id, user_id).await;
+            None
+        }
+        ClientMessage::SetClaims { claims } => {
+            let claims = state.hub.set_claims(session_id, user_id, claims).await;
+            state
+                .hub
+                .broadcast(session_id, &json!({"type": "claims", "claims": claims}))
+                .await;
             None
         }
         ClientMessage::TaskUpdate { id, status } => {
@@ -2314,6 +2382,27 @@ mod tests {
         // Everyone shows up as an author, both as themselves and their agent.
         assert_eq!(change[0].authors.len(), EDITORS * 2);
         assert_eq!(hub.get_metrics("s1").await.merges_applied, (EDITORS * EDITS_EACH) as u64);
+    }
+
+    #[tokio::test]
+    async fn the_first_claim_on_a_file_wins_and_leaving_releases_it() {
+        let hub = Hub::new();
+        hub.add_peer("s1", "alice").await;
+        hub.add_peer("s1", "bob").await;
+        let claim = |path: &str| FileClaim { path: path.to_string(), holder: "agent panel".to_string(), user_id: None };
+        let claims = hub.set_claims("s1", "alice", vec![claim("api.py")]).await;
+        assert_eq!(claims.len(), 1);
+        // bob can't take api.py while alice's agent holds it.
+        let claims = hub.set_claims("s1", "bob", vec![claim("api.py"), claim("ui.tsx")]).await;
+        let holders: Vec<(String, String)> = claims
+            .iter()
+            .map(|claim| (claim.path.clone(), claim.user_id.clone().unwrap()))
+            .collect();
+        assert_eq!(holders, vec![("api.py".into(), "alice".into()), ("ui.tsx".into(), "bob".into())]);
+        hub.remove_peer("s1", "alice").await;
+        let claims = hub.get_claims("s1").await;
+        assert_eq!(claims.len(), 1);
+        assert_eq!(claims[0].path, "ui.tsx");
     }
 
     #[tokio::test]
