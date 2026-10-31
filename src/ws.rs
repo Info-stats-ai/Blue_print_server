@@ -46,6 +46,7 @@ pub const AGENT_USER_ID: &str = "agent";
 /// One open websocket's outgoing queue.
 struct Subscriber {
     id: u64,
+    user_id: String,
     tx: mpsc::UnboundedSender<Message>,
     pending: Arc<AtomicUsize>,
 }
@@ -343,6 +344,7 @@ impl Hub {
         if let Ok(mut subscribers) = channel.subscribers.lock() {
             subscribers.push(Subscriber {
                 id,
+                user_id: user_id.to_string(),
                 tx,
                 pending: pending.clone(),
             });
@@ -416,6 +418,25 @@ impl Hub {
             // A send only fails once the socket's task has ended.
             subscriber.tx.send(message.clone()).is_ok()
         });
+    }
+
+    /// Sends to one user's connections only (all of them, if they have
+    /// several). Returns whether any connection took it.
+    pub async fn send_to_user(&self, session_id: &str, user_id: &str, value: &serde_json::Value) -> bool {
+        let message = Message::Text(value.to_string().into());
+        let map = self.inner.read().await;
+        let Some(channel) = map.get(session_id) else {
+            return false;
+        };
+        let Ok(subscribers) = channel.subscribers.lock() else {
+            return false;
+        };
+        let mut delivered = false;
+        for subscriber in subscribers.iter().filter(|subscriber| subscriber.user_id == user_id) {
+            subscriber.pending.fetch_add(1, Ordering::Relaxed);
+            delivered |= subscriber.tx.send(message.clone()).is_ok();
+        }
+        delivered
     }
 
     /// Appends to the session's chat history, dropping the oldest entries
@@ -1451,6 +1472,12 @@ async fn handle_socket(
         "name": session_name,
         "goal": session_goal,
         "peer_names": peer_names,
+        "previews": state
+            .previews
+            .in_session(&session_id)
+            .into_iter()
+            .map(|(user_id, port, token)| json!({"user_id": user_id, "port": port, "token": token}))
+            .collect::<Vec<_>>(),
     });
 
     if socket
@@ -1538,6 +1565,8 @@ async fn handle_socket(
 
     state.hub.unsubscribe(&session_id, connection.id).await;
     state.hub.remove_peer(&session_id, &user_id).await;
+    // Their app is no longer reachable once they're gone.
+    stop_preview(&state, &session_id, &user_id).await;
     state
         .hub
         .broadcast(
@@ -1551,6 +1580,18 @@ async fn handle_socket(
         .hub
         .broadcast(&session_id, &json!({"type": "claims", "claims": claims}))
         .await;
+}
+
+async fn stop_preview(state: &AppState, session_id: &str, user_id: &str) {
+    if state.previews.stop(session_id, user_id) {
+        state
+            .hub
+            .broadcast(
+                session_id,
+                &json!({"type": "preview", "user_id": user_id, "port": null, "token": null}),
+            )
+            .await;
+    }
 }
 
 /// Stores the session's change list so it outlives a server restart.
@@ -1657,6 +1698,15 @@ enum ClientMessage {
     TaskUpdate { id: String, status: String },
     // The files this user's agents hold right now, replacing the last set.
     SetClaims { claims: Vec<FileClaim> },
+    // Share (or stop sharing) the app this user runs on localhost:<port>.
+    PreviewStart { port: u16 },
+    PreviewStop,
+    // This user's IDE answering a `preview_request` it was sent.
+    PreviewResponse {
+        id: u64,
+        #[serde(flatten)]
+        reply: crate::preview::Reply,
+    },
     // This user's agent backed off because `holder` (a teammate's agent) is
     // already changing the same definitions in `path`.
     AgentCollision {
@@ -1748,6 +1798,30 @@ async fn handle_client_message(
         }
         ClientMessage::AssignTasks => {
             team::request_assignment(state, session_id, user_id).await;
+            None
+        }
+        ClientMessage::PreviewStart { port } => {
+            if port == 0 {
+                return None;
+            }
+            let token = state.previews.start(session_id, user_id, port);
+            state
+                .hub
+                .broadcast(
+                    session_id,
+                    &json!({"type": "preview", "user_id": user_id, "port": port, "token": token}),
+                )
+                .await;
+            None
+        }
+        ClientMessage::PreviewStop => {
+            stop_preview(state, session_id, user_id).await;
+            None
+        }
+        ClientMessage::PreviewResponse { id, reply } => {
+            if state.preview_routing.is_sharer(id, session_id, user_id) {
+                state.previews.complete(id, reply);
+            }
             None
         }
         ClientMessage::AgentCollision { path, symbols, holder } => {

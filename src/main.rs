@@ -8,11 +8,12 @@ mod errors;
 mod handlers;
 mod models;
 mod oauth;
+mod preview;
 mod symbols;
 mod team;
 mod ws;
 
-use axum::routing::{get, post, put};
+use axum::routing::{any, get, post, put};
 use axum::{Router, middleware};
 use sqlx::SqlitePool;
 use std::net::SocketAddr;
@@ -36,6 +37,8 @@ pub struct AppState {
     // avoidable latency and CPU cost. `Client` is cheap to clone (an `Arc`
     // internally), so sharing it this way is the documented pattern.
     pub http_client: reqwest::Client,
+    pub previews: preview::Previews,
+    pub preview_routing: preview::Routing,
 }
 
 #[tokio::main]
@@ -67,6 +70,8 @@ async fn main() {
         oauth: oauth::OAuthState::new(),
         exchange: oauth::ExchangeState::new(),
         http_client,
+        previews: preview::Previews::default(),
+        preview_routing: preview::Routing::default(),
     };
 
     match checkpoint::prune_checkpoints(&state.pool, None).await {
@@ -148,6 +153,12 @@ async fn main() {
         .merge(protected_routes)
         .layer(CorsLayer::permissive())
         .layer(GovernorLayer::new(global_governor_conf))
+        // Added after the layers so they're outside the per-IP rate limit:
+        // one page load of a dev app makes dozens of asset requests.
+        .route("/preview/{token}", any(preview::open))
+        .route("/preview/{token}/", any(preview::open))
+        .route("/preview/{token}/{*rest}", any(preview::open))
+        .fallback(preview::fallback)
         .with_state(state);
 
     // Railway assigns a dynamic port via $PORT and routes traffic to it, not to a
