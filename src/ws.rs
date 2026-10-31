@@ -138,8 +138,8 @@ struct SessionChannel {
     tasks: TaskBoard,
     // What each person's AI agent is doing right now, if anything.
     agent_activity: HashMap<String, AgentActivity>,
-    // Files each person's agents are editing right now: user id -> claims.
-    // One agent per file; the first claim on a path wins.
+    // What each person's agents are editing right now: user id -> claims.
+    // One agent per definition; the first claim on overlapping code wins.
     claims: HashMap<String, Vec<FileClaim>>,
 }
 
@@ -150,6 +150,21 @@ pub struct FileClaim {
     pub holder: String,
     #[serde(default)]
     pub user_id: Option<String>,
+    // The definitions being changed, e.g. "TaskStore.complete"; empty means
+    // the whole file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub symbols: Vec<String>,
+}
+
+impl FileClaim {
+    /// Whether two claims cover any of the same code: same file, and either
+    /// one is whole-file or they share a definition.
+    pub fn overlaps(&self, other: &FileClaim) -> bool {
+        self.path == other.path
+            && (self.symbols.is_empty()
+                || other.symbols.is_empty()
+                || self.symbols.iter().any(|symbol| other.symbols.contains(symbol)))
+    }
 }
 
 /// Everything changed in one file during the session, relative to how the
@@ -276,6 +291,9 @@ pub struct SessionMetrics {
     // Times a save landed outside the saver's assigned lane per the
     // blueprint's "## Work Split" section (see `agent::parse_work_split`).
     pub lane_warnings: u64,
+    // Times an agent backed off because another agent was already changing
+    // the same definition — the agent-vs-agent half of "conflicts avoided."
+    pub agent_collisions: u64,
     pub llm_calls: u64,
     // Sum of `agent::estimate_cost_usd` across every call this session has
     // made — approximate by construction (see that function's doc comment),
@@ -747,6 +765,11 @@ impl Hub {
             .await;
     }
 
+    pub async fn record_agent_collision(&self, session_id: &str) {
+        self.update_metrics(session_id, |metrics| metrics.agent_collisions += 1)
+            .await;
+    }
+
     /// Records one LLM call's estimated cost.
     pub async fn record_llm_call(&self, session_id: &str, cost_usd: f64) {
         self.update_metrics(session_id, |metrics| {
@@ -1164,15 +1187,15 @@ impl Hub {
         let Some(channel) = map.get_mut(session_id) else {
             return Vec::new();
         };
-        let held_by_others: HashSet<String> = channel
+        let held_by_others: Vec<&FileClaim> = channel
             .claims
             .iter()
             .filter(|(owner, _)| owner.as_str() != user_id)
-            .flat_map(|(_, claims)| claims.iter().map(|claim| claim.path.clone()))
+            .flat_map(|(_, claims)| claims.iter())
             .collect();
-        let mine = claims
+        let mine: Vec<FileClaim> = claims
             .into_iter()
-            .filter(|claim| !held_by_others.contains(&claim.path))
+            .filter(|claim| !held_by_others.iter().any(|other| other.overlaps(claim)))
             .map(|claim| FileClaim {
                 user_id: Some(user_id.to_string()),
                 ..claim
@@ -1634,6 +1657,14 @@ enum ClientMessage {
     TaskUpdate { id: String, status: String },
     // The files this user's agents hold right now, replacing the last set.
     SetClaims { claims: Vec<FileClaim> },
+    // This user's agent backed off because `holder` (a teammate's agent) is
+    // already changing the same definitions in `path`.
+    AgentCollision {
+        path: String,
+        #[serde(default)]
+        symbols: Vec<String>,
+        holder: String,
+    },
     // What this user's AI agent is doing, so everyone (and every other
     // agent) knows who is working on what. `None` status clears it.
     AgentActivity {
@@ -1717,6 +1748,23 @@ async fn handle_client_message(
         }
         ClientMessage::AssignTasks => {
             team::request_assignment(state, session_id, user_id).await;
+            None
+        }
+        ClientMessage::AgentCollision { path, symbols, holder } => {
+            state.hub.record_agent_collision(session_id).await;
+            state
+                .hub
+                .broadcast(
+                    session_id,
+                    &json!({
+                        "type": "agent_collision",
+                        "user_id": user_id,
+                        "path": path,
+                        "symbols": symbols,
+                        "holder": holder,
+                    }),
+                )
+                .await;
             None
         }
         ClientMessage::SetClaims { claims } => {
@@ -2482,7 +2530,12 @@ mod tests {
         let hub = Hub::new();
         hub.add_peer("s1", "alice").await;
         hub.add_peer("s1", "bob").await;
-        let claim = |path: &str| FileClaim { path: path.to_string(), holder: "agent panel".to_string(), user_id: None };
+        let claim = |path: &str| FileClaim {
+            path: path.to_string(),
+            holder: "agent panel".to_string(),
+            user_id: None,
+            symbols: Vec::new(),
+        };
         let claims = hub.set_claims("s1", "alice", vec![claim("api.py")]).await;
         assert_eq!(claims.len(), 1);
         // bob can't take api.py while alice's agent holds it.
@@ -2496,6 +2549,32 @@ mod tests {
         let claims = hub.get_claims("s1").await;
         assert_eq!(claims.len(), 1);
         assert_eq!(claims[0].path, "ui.tsx");
+    }
+
+    #[tokio::test]
+    async fn agents_share_a_file_but_not_a_function() {
+        let hub = Hub::new();
+        hub.add_peer("s1", "alice").await;
+        hub.add_peer("s1", "bob").await;
+        let claim = |symbols: &[&str]| FileClaim {
+            path: "store.py".to_string(),
+            holder: "I-mode agent".to_string(),
+            user_id: None,
+            symbols: symbols.iter().map(|symbol| symbol.to_string()).collect(),
+        };
+        hub.set_claims("s1", "alice", vec![claim(&["TaskStore.complete"])]).await;
+        // A different function in the same file: both hold it.
+        let claims = hub.set_claims("s1", "bob", vec![claim(&["TaskStore.add"])]).await;
+        assert_eq!(claims.len(), 2);
+        // The same function, or the whole file, is refused.
+        let claims = hub.set_claims("s1", "bob", vec![claim(&["TaskStore.complete"])]).await;
+        assert_eq!(claims.len(), 1);
+        assert_eq!(claims[0].user_id.as_deref(), Some("alice"));
+        let claims = hub.set_claims("s1", "bob", vec![claim(&[])]).await;
+        assert_eq!(claims.len(), 1);
+
+        hub.record_agent_collision("s1").await;
+        assert_eq!(hub.get_metrics("s1").await.agent_collisions, 1);
     }
 
     #[tokio::test]
