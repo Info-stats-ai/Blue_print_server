@@ -1456,6 +1456,7 @@ async fn handle_socket(
             .fetch_optional(&state.pool)
             .await
             .unwrap_or(None);
+    let session_owner = leader_info.as_ref().map(|(_, owner_id, _, _)| owner_id.clone());
     let (has_leader, leader_id, session_name, session_goal) = match leader_info {
         Some((has_leader, owner_id, name, goal)) => {
             (has_leader, has_leader.then_some(owner_id), name, goal)
@@ -1464,8 +1465,15 @@ async fn handle_socket(
     };
 
     let peer_names = member_display_names(&state, &session_id).await;
+    let github_repo: Option<String> = sqlx::query_scalar("SELECT github_repo FROM sessions WHERE id = ?")
+        .bind(&session_id)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None)
+        .flatten();
 
     let snapshot = json!({
+        "github_repo": github_repo,
         "type": "snapshot",
         "contracts": contracts,
         "intents": intents,
@@ -1486,6 +1494,7 @@ async fn handle_socket(
         "metrics": metrics,
         "has_leader": has_leader,
         "leader_id": leader_id,
+        "owner_id": session_owner,
         "name": session_name,
         "goal": session_goal,
         "peer_names": peer_names,

@@ -5,6 +5,7 @@ mod crdt;
 mod db;
 mod email;
 mod errors;
+mod github;
 mod handlers;
 mod models;
 mod oauth;
@@ -40,6 +41,23 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub previews: preview::Previews,
     pub preview_routing: preview::Routing,
+    // Set when the GitHub App's credentials are configured.
+    pub github: Option<std::sync::Arc<github::GithubApp>>,
+}
+
+#[cfg(test)]
+pub(crate) fn test_state(pool: SqlitePool) -> AppState {
+    AppState {
+        pool,
+        hub: ws::Hub::new(),
+        jwt_secret: "test".to_string(),
+        oauth: oauth::OAuthState::new(),
+        exchange: oauth::ExchangeState::new(),
+        http_client: reqwest::Client::new(),
+        previews: preview::Previews::default(),
+        preview_routing: preview::Routing::default(),
+        github: None,
+    }
 }
 
 #[tokio::main]
@@ -73,7 +91,12 @@ async fn main() {
         http_client,
         previews: preview::Previews::default(),
         preview_routing: preview::Routing::default(),
+        github: github::GithubApp::from_env(),
     };
+    println!(
+        "github app: {}",
+        if state.github.is_some() { "configured" } else { "not configured" }
+    );
 
     state.hub.set_event_sink(stats::spawn_writer(state.pool.clone()));
 
@@ -121,7 +144,10 @@ async fn main() {
         .route("/auth/exchange", post(oauth::exchange))
         .layer(GovernorLayer::new(auth_governor_conf));
 
-    let public_routes = Router::new().route("/ws", get(ws::ws_handler));
+    let public_routes = Router::new()
+        .route("/ws", get(ws::ws_handler))
+        .route("/github/webhook", post(github::webhook))
+        .route("/join/{id}", get(github::join_page));
 
     let protected_routes = Router::new()
         .route(
@@ -139,6 +165,7 @@ async fn main() {
         .route("/intent/{id}", put(handlers::update_intent))
         .route("/intents", get(handlers::list_intents))
         .route("/metrics/weekly", get(stats::weekly))
+        .route("/sessions/{id}/github", put(github::link_repo))
         .route(
             "/plans",
             post(handlers::create_plan).get(handlers::list_plans),
