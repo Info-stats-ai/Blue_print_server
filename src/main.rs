@@ -9,6 +9,7 @@ mod handlers;
 mod models;
 mod oauth;
 mod preview;
+mod stats;
 mod symbols;
 mod team;
 mod ws;
@@ -74,6 +75,8 @@ async fn main() {
         preview_routing: preview::Routing::default(),
     };
 
+    state.hub.set_event_sink(stats::spawn_writer(state.pool.clone()));
+
     match checkpoint::prune_checkpoints(&state.pool, None).await {
         Ok(0) => {}
         Ok(pruned) => println!("checkpoint: pruned {pruned} old checkpoint(s)"),
@@ -135,6 +138,7 @@ async fn main() {
         .route("/intent", post(handlers::create_intent))
         .route("/intent/{id}", put(handlers::update_intent))
         .route("/intents", get(handlers::list_intents))
+        .route("/metrics/weekly", get(stats::weekly))
         .route(
             "/plans",
             post(handlers::create_plan).get(handlers::list_plans),

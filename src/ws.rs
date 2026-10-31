@@ -272,6 +272,9 @@ pub struct Hub {
     // Serializes storing-and-broadcasting chat per session, so every client
     // receives messages in the order of their ids.
     chat_locks: Arc<std::sync::Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    // Where collision-prevention events go to be counted for the weekly
+    // dashboard (see `stats.rs`). Unset in tests.
+    event_sink: Arc<std::sync::OnceLock<crate::stats::EventSink>>,
 }
 
 /// Live counters behind Phase 6's "conflicts avoided" metric overlay —
@@ -769,24 +772,38 @@ impl Hub {
         self.jobs_dirty.write().await.remove(&key)
     }
 
+    pub fn set_event_sink(&self, sink: crate::stats::EventSink) {
+        let _ = self.event_sink.set(sink);
+    }
+
+    fn count_event(&self, session_id: &str, kind: &'static str) {
+        if let Some(sink) = self.event_sink.get() {
+            let _ = sink.send((session_id.to_string(), kind));
+        }
+    }
+
     pub async fn record_merge(&self, session_id: &str) {
+        self.count_event(session_id, crate::stats::MERGE);
         self.update_metrics(session_id, |metrics| metrics.merges_applied += 1)
             .await;
     }
 
     /// Records one watcher-caught divergence from the blueprint.
     pub async fn record_divergence_caught(&self, session_id: &str) {
+        self.count_event(session_id, crate::stats::DIVERGENCE);
         self.update_metrics(session_id, |metrics| metrics.divergences_caught += 1)
             .await;
     }
 
     /// Records one work-lane warning (a save landed outside its assigned owner's lane).
     pub async fn record_lane_warning(&self, session_id: &str) {
+        self.count_event(session_id, crate::stats::LANE_WARNING);
         self.update_metrics(session_id, |metrics| metrics.lane_warnings += 1)
             .await;
     }
 
     pub async fn record_agent_collision(&self, session_id: &str) {
+        self.count_event(session_id, crate::stats::AGENT_COLLISION);
         self.update_metrics(session_id, |metrics| metrics.agent_collisions += 1)
             .await;
     }
