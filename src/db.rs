@@ -88,10 +88,10 @@ fn create_parent_dir(database_url: &str) -> Result<(), sqlx::Error> {
     }
 
     let path = Path::new(path_str);
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent).map_err(sqlx::Error::Io)?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent).map_err(sqlx::Error::Io)?;
     }
 
     Ok(())
