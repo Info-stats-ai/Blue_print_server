@@ -1472,8 +1472,11 @@ async fn handle_socket(
         .unwrap_or(None)
         .flatten();
 
+    let agent_listens = crate::listen::is_on(&state.pool, &session_id).await;
+
     let snapshot = json!({
         "github_repo": github_repo,
+        "agent_listens": agent_listens,
         "type": "snapshot",
         "contracts": contracts,
         "intents": intents,
@@ -1724,6 +1727,9 @@ enum ClientMessage {
     TaskUpdate { id: String, status: String },
     // The files this user's agents hold right now, replacing the last set.
     SetClaims { claims: Vec<FileClaim> },
+    // Owner only: whether the team agent follows the chat and speaks up on
+    // its own (see listen.rs).
+    SetAgentListens { on: bool },
     // Share (or stop sharing) the app this user runs on localhost:<port>.
     PreviewStart { port: u16 },
     PreviewStop,
@@ -1824,6 +1830,29 @@ async fn handle_client_message(
         }
         ClientMessage::AssignTasks => {
             team::request_assignment(state, session_id, user_id).await;
+            None
+        }
+        ClientMessage::SetAgentListens { on } => {
+            if !is_session_owner(state, session_id, user_id).await {
+                return Some(json!({
+                    "type": "chat",
+                    "sender": AGENT_USER_ID,
+                    "text": "Only the session owner can change whether the team agent follows the chat.",
+                }));
+            }
+            if let Err(error) = sqlx::query("UPDATE sessions SET agent_listens = ? WHERE id = ?")
+                .bind(on)
+                .bind(session_id)
+                .execute(&state.pool)
+                .await
+            {
+                eprintln!("ws: saving agent_listens for {session_id} failed: {error}");
+                return None;
+            }
+            state
+                .hub
+                .broadcast(session_id, &json!({"type": "agent_listens", "on": on}))
+                .await;
             None
         }
         ClientMessage::PreviewStart { port } => {
@@ -2188,6 +2217,14 @@ async fn handle_chat_message(
         tokio::spawn(async move {
             agent::handle_mention(state, session_id).await;
         });
+    } else if !lowered.contains("@agent") {
+        // Plain team chat: the listening agent (if the owner turned it on)
+        // decides whether to chime in.
+        tokio::spawn(crate::listen::on_team_message(
+            state.clone(),
+            session_id.to_string(),
+            message.text.clone(),
+        ));
     }
 }
 
@@ -2278,6 +2315,15 @@ async fn check_work_lane(state: &AppState, session_id: &str, path: &str, user_id
         return;
     };
     if owner == user_id || owner == AGENT_USER_ID {
+        return;
+    }
+    // The reference names people (it's written from a chat that shows names),
+    // so the owner may be the saver's name rather than their id.
+    let names = member_display_names(state, session_id).await;
+    if names
+        .get(user_id)
+        .is_some_and(|name| name.eq_ignore_ascii_case(owner.trim()))
+    {
         return;
     }
     state.hub.record_lane_warning(session_id).await;

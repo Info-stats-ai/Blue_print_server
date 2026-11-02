@@ -36,7 +36,7 @@ Use exactly these six '##' sections, in this order, every time, with these exact
 ## Architecture\nA short paragraph on the overall design and how the pieces fit together.\n\n\
 ## File Structure\nA bullet per synced file, one line each: `path`: its role.\n\n\
 ## Work Split\nAssign every synced file to exactly one owner from the current participants: {participants}. \
-One bullet per owner, in the form `- participant_id: path1, path2, ...`. If a file's owner isn't clear from the \
+One bullet per owner, in the form `- name: path1, path2, ...`, using the participant's name exactly as listed. If a file's owner isn't clear from the \
 conversation, assign it to whichever participant most recently touched it, or to `agent` if none has.\n\n\
 ## Contracts\nEach key module/function as a bullet `- `symbol_name`: one line of intended behavior`. Keep every symbol the team names in backticks.\n\n\
 ## Roadmap\nUp to 5 bullets: what's next, in priority order.\n\n\
@@ -151,7 +151,8 @@ pub async fn handle_mention(state: AppState, session_id: String) {
         .hub
         .recent_chat_history(&session_id, HISTORY_WINDOW)
         .await;
-    let messages = build_messages(&history);
+    let names = ws::member_display_names(&state, &session_id).await;
+    let messages = build_messages(&history, &names);
     if messages.is_empty() {
         return;
     }
@@ -218,7 +219,8 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
         .hub
         .recent_chat_history(&session_id, BLUEPRINT_HISTORY_WINDOW)
         .await;
-    let messages = build_messages(&history);
+    let names = ws::member_display_names(&state, &session_id).await;
+    let messages = build_messages(&history, &names);
     if messages.is_empty() {
         return;
     }
@@ -246,7 +248,14 @@ pub async fn handle_blueprint_request(state: AppState, session_id: String) {
         )
         .await;
     let file_context = format_file_context(&files);
-    let mut participants = state.hub.peer_ids(&session_id).await;
+    let mut participants: Vec<String> = state
+        .hub
+        .peer_ids(&session_id)
+        .await
+        .into_iter()
+        .map(|id| names.get(&id).cloned().unwrap_or(id))
+        .collect();
+    participants.sort();
     participants.push(ws::AGENT_USER_ID.to_string());
     let participant_list = participants.join(", ");
     let live_activity = format_live_activity(&state.hub.get_presence(&session_id).await);
@@ -336,7 +345,8 @@ pub async fn handle_triage_request(state: AppState, session_id: String) {
     // never discussed) — `build_messages` returns empty in that case, so
     // fall back to a single explicit trigger message rather than bailing
     // the way `handle_mention`/`handle_blueprint_request` do.
-    let messages = build_messages(&history);
+    let names = ws::member_display_names(&state, &session_id).await;
+    let messages = build_messages(&history, &names);
     let messages = if messages.is_empty() {
         vec![json!({"role": "user", "content": "Run the triage review now."})]
     } else {
@@ -740,6 +750,14 @@ pub async fn check_file_save(
     broadcast_agent_reply(&state, &session_id, reply).await;
 }
 
+pub(crate) async fn live_activity_text(state: &AppState, session_id: &str) -> String {
+    format_live_activity(&state.hub.get_presence(session_id).await)
+}
+
+pub(crate) async fn pending_plan_text(state: &AppState, session_id: &str) -> String {
+    format_pending_plan(&state.pool, session_id).await
+}
+
 pub(crate) async fn broadcast_agent_reply(state: &AppState, session_id: &str, text: String) {
     ws::post_chat(state, session_id, ws::AGENT_USER_ID, text, None).await;
 }
@@ -748,7 +766,7 @@ pub(crate) async fn broadcast_agent_reply(state: &AppState, session_id: &str, te
 /// each user line with its sender so the agent can tell developers apart
 /// even though they all map to the same "user" role. Consecutive same-role
 /// entries are concatenated since the API rejects back-to-back same-role turns.
-fn build_messages(history: &[ChatMessage]) -> Vec<serde_json::Value> {
+fn build_messages(history: &[ChatMessage], names: &HashMap<String, String>) -> Vec<serde_json::Value> {
     let mut turns: Vec<(&'static str, String)> = Vec::new();
     for entry in history {
         let role = if entry.sender == ws::AGENT_USER_ID {
@@ -757,7 +775,10 @@ fn build_messages(history: &[ChatMessage]) -> Vec<serde_json::Value> {
             "user"
         };
         let line = if role == "user" {
-            format!("[{}] {}", entry.sender, entry.text)
+            // Names, so what the agent writes (the reference's work split,
+            // replies) refers to people as the team does.
+            let who = names.get(&entry.sender).unwrap_or(&entry.sender);
+            format!("[{who}] {}", entry.text)
         } else {
             entry.text.clone()
         };

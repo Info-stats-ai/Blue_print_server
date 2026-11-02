@@ -7,6 +7,7 @@ mod email;
 mod errors;
 mod github;
 mod handlers;
+mod listen;
 mod models;
 mod oauth;
 mod preview;
@@ -43,6 +44,7 @@ pub struct AppState {
     pub preview_routing: preview::Routing,
     // Set when the GitHub App's credentials are configured.
     pub github: Option<std::sync::Arc<github::GithubApp>>,
+    pub listen_limits: listen::Limits,
 }
 
 #[cfg(test)]
@@ -57,6 +59,7 @@ pub(crate) fn test_state(pool: SqlitePool) -> AppState {
         previews: preview::Previews::default(),
         preview_routing: preview::Routing::default(),
         github: None,
+        listen_limits: listen::Limits::default(),
     }
 }
 
@@ -92,6 +95,7 @@ async fn main() {
         previews: preview::Previews::default(),
         preview_routing: preview::Routing::default(),
         github: github::GithubApp::from_env(),
+        listen_limits: listen::Limits::default(),
     };
     println!(
         "github app: {}",
