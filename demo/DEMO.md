@@ -1,7 +1,7 @@
 # I-mode demo — recording script
 
-About 5–7 minutes. Two people, Alice (leader) and Bob, fix a bug together in
-**Tiny Tasks** while their AI agents help.
+About 8–10 minutes (skip optional scenes for 6). Two people, Alice (leader)
+and Bob, fix a bug together in **Tiny Tasks** while their AI agents help.
 
 ## Before you record
 
@@ -55,21 +55,46 @@ When you're done: `~/blueprint-server/demo/stop-demo.sh`
 
 1. Switch to **Agent**, type:
    `Fix complete() in tasks/store.py so it finds the task by id, add a test for it, then run the tests.`
+   (Or, on **Team**, end any request with `@agent` — it goes to your own AI,
+   which can change files, and **Send to** switches to **My AI** for you.)
 2. The agent edits the file and adds a test — the steps show inline.
 3. When it wants to run the tests, a **Run / Deny** card appears. Click **Run**.
-4. Tests pass. Bob's window shows the file changed (or click **Sync to team**
-   if the banner asks).
+4. Tests pass. Click **Sync to team** on the banner: Bob's copy gets the fix.
 
-## Scene 7 — Shared team AI (1 min)
+## Scene 7 — An AI teammate that listens (1.5 min)
 
-1. Switch **Send to: Team**. In Bob's window type:
-   `@agent blueprint`
-2. The server's agent writes a shared reference of the project and the
-   conversation, and both windows get it.
-3. Optional: in Alice's window, `@agent triage` (leader only) checks the files
-   against that reference.
+1. In Alice's window, open the people menu (next to the I-mode switch) and turn
+   on **Team agent follows the chat**. Both feeds say it's on.
+2. On **Team**, Bob types `I'll take the tests and the CLI` and Alice types
+   `I'm doing the CLI too`. The agent points out the overlap by itself.
+3. Bob types `lol` — the agent stays quiet.
+4. Alice types `ok: Bob does tests, I do the CLI. Agreed?`, Bob answers
+   `agreed, let's build it`. The agent confirms the split and writes
+   `REFERENCE.md`, which appears in both file trees with a Work Split by name.
 
-## Scene 8 — Wrap-up (20s)
+## Scene 8 — Two agents, one file (optional, 1 min)
+
+1. Both open `tasks/store.py`. Bob asks his AI to change `complete()`; while it
+   works, Alice asks hers to change `complete()` too.
+2. Alice's agent backs off — "Collision avoided: … is already changing
+   `TaskStore.complete`" — while edits to other functions in the same file go
+   through.
+
+## Scene 9 — Show the running app (45s)
+
+1. In a terminal in Alice's project: `python3 -m http.server 5173`.
+2. People menu → **Share running app…** → `5173` → **Share**.
+3. Bob's session header shows "alice's app · port 5173" with **Open**: it opens
+   Alice's localhost in Bob's browser, through the server.
+4. People menu → **Stop sharing app** — the link stops working.
+
+## Scene 10 — The numbers (30s)
+
+1. Open the **Team** tab: **This week** shows conflicts caught (agent
+   collisions, divergences, out-of-lane edits) and live merges, per day.
+2. Click **Copy summary** and paste it: one line for a status update.
+
+## Scene 11 — Wrap-up (20s)
 
 1. Back to both windows side by side: same files, same chat, both AIs aware of
    who did what.
