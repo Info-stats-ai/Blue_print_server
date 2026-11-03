@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::oneshot;
+use tokio::sync::{broadcast, oneshot};
 
 use crate::AppState;
 
@@ -67,6 +67,8 @@ pub struct Previews {
     shares: Arc<Mutex<HashMap<String, Share>>>,
     waiters: Arc<Mutex<HashMap<u64, oneshot::Sender<Reply>>>>,
     next_request: Arc<AtomicU64>,
+    // Per share token: tells open preview pages the sharer changed a file.
+    changes: Arc<Mutex<HashMap<String, broadcast::Sender<()>>>>,
 }
 
 impl Previews {
@@ -95,7 +97,41 @@ impl Previews {
         };
         let before = shares.len();
         shares.retain(|_, share| !(share.session_id == session_id && share.user_id == user_id));
+        if let Ok(mut changes) = self.changes.lock() {
+            changes.retain(|token, _| shares.contains_key(token));
+        }
         shares.len() != before
+    }
+
+    /// The sharer changed a file: open preview pages of their share reload.
+    pub fn notify_changed(&self, session_id: &str, user_id: &str) {
+        let Some(token) = self.token_for(session_id, user_id) else {
+            return;
+        };
+        if let Some(sender) = self.changes.lock().ok().and_then(|changes| changes.get(&token).cloned()) {
+            let _ = sender.send(());
+        }
+    }
+
+    fn token_for(&self, session_id: &str, user_id: &str) -> Option<String> {
+        self.shares
+            .lock()
+            .ok()?
+            .iter()
+            .find(|(_, share)| share.session_id == session_id && share.user_id == user_id)
+            .map(|(token, _)| token.clone())
+    }
+
+    /// Changes to a live share, for one open preview page.
+    pub fn subscribe(&self, token: &str) -> Option<broadcast::Receiver<()>> {
+        self.get(token)?;
+        let mut changes = self.changes.lock().ok()?;
+        Some(
+            changes
+                .entry(token.to_string())
+                .or_insert_with(|| broadcast::channel(16).0)
+                .subscribe(),
+        )
     }
 
     pub fn get(&self, token: &str) -> Option<Share> {
@@ -197,6 +233,45 @@ pub async fn fallback(State(state): State<AppState>, request: Request) -> Respon
     relay(&state, &token, path, request).await
 }
 
+/// The path preview pages listen on for "the sharer changed a file". Served by
+/// this server itself (never relayed), found via the preview cookie.
+pub const EVENTS_PATH: &str = "/__i/preview-events";
+
+/// Added to the shared app's HTML pages: reload when the sharer changes a file.
+/// Waits a moment and retries if the dev server is mid-rebuild.
+const RELOAD_SCRIPT: &str = "<script>(()=>{try{const e=new EventSource(\"/__i/preview-events\");\
+e.onmessage=()=>setTimeout(()=>location.reload(),150);}catch(_){}})()</script>";
+
+/// `GET /__i/preview-events`: a server-sent event per file change in the share.
+pub async fn events(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    use axum::response::sse::{Event, KeepAlive, Sse};
+    let Some(receiver) = cookie_token(&headers).and_then(|token| state.previews.subscribe(&token)) else {
+        return not_shared();
+    };
+    let stream = futures_util::stream::unfold(receiver, |mut receiver| async move {
+        loop {
+            match receiver.recv().await {
+                Ok(()) => return Some((Ok::<_, std::convert::Infallible>(Event::default().data("changed")), receiver)),
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => return None,
+            }
+        }
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+}
+
+/// Puts the reload script into an HTML page, before `</body>` when there is one.
+pub fn with_reload_script(html: &[u8]) -> Vec<u8> {
+    let text = String::from_utf8_lossy(html);
+    let lower = text.to_ascii_lowercase();
+    let mut out = text.to_string();
+    match lower.rfind("</body>") {
+        Some(at) => out.insert_str(at, RELOAD_SCRIPT),
+        None => out.push_str(RELOAD_SCRIPT),
+    }
+    out.into_bytes()
+}
+
 fn cookie_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get_all(header::COOKIE)
@@ -281,7 +356,13 @@ fn strip_preview_cookie(value: &str) -> String {
 
 fn build_response(reply: Reply) -> Response {
     let status = StatusCode::from_u16(reply.status).unwrap_or(StatusCode::BAD_GATEWAY);
-    let body = BASE64.decode(reply.body.as_bytes()).unwrap_or_default();
+    let mut body = BASE64.decode(reply.body.as_bytes()).unwrap_or_default();
+    let is_html = reply.headers.iter().any(|(name, value)| {
+        name.eq_ignore_ascii_case("content-type") && value.to_ascii_lowercase().starts_with("text/html")
+    });
+    if is_html {
+        body = with_reload_script(&body);
+    }
     let mut response = Response::new(Body::from(body));
     *response.status_mut() = status;
     for (name, value) in reply.headers {
@@ -319,6 +400,31 @@ mod tests {
         headers.insert(header::COOKIE, HeaderValue::from_static("theme=dark; i_preview=abc123; sid=9"));
         assert_eq!(cookie_token(&headers).as_deref(), Some("abc123"));
         assert_eq!(strip_preview_cookie("theme=dark; i_preview=abc123; sid=9"), "theme=dark; sid=9");
+    }
+
+    #[test]
+    fn pages_get_the_reload_script_before_the_body_ends() {
+        let page = with_reload_script(b"<html><BODY><h1>x</h1></BODY></html>");
+        let page = String::from_utf8(page).unwrap();
+        assert!(page.contains("preview-events"));
+        assert!(page.find("preview-events").unwrap() < page.find("</BODY>").unwrap());
+        let fragment = String::from_utf8(with_reload_script(b"<p>no body tag</p>")).unwrap();
+        assert!(fragment.ends_with("</script>"));
+    }
+
+    #[tokio::test]
+    async fn a_change_reaches_open_pages_of_that_share_only() {
+        let previews = Previews::default();
+        let alice = previews.start("s1", "alice", 3000);
+        let bob = previews.start("s1", "bob", 4000);
+        let mut alice_page = previews.subscribe(&alice).unwrap();
+        let mut bob_page = previews.subscribe(&bob).unwrap();
+        assert!(previews.subscribe("not-a-share").is_none());
+        previews.notify_changed("s1", "alice");
+        assert!(alice_page.try_recv().is_ok());
+        assert!(bob_page.try_recv().is_err());
+        previews.stop("s1", "alice");
+        assert!(matches!(alice_page.recv().await, Err(broadcast::error::RecvError::Closed)));
     }
 
     #[test]

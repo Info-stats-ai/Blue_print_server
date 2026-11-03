@@ -1733,6 +1733,8 @@ enum ClientMessage {
     // Share (or stop sharing) the app this user runs on localhost:<port>.
     PreviewStart { port: u16 },
     PreviewStop,
+    // The sharer changed a file: open preview pages reload.
+    PreviewChanged,
     // This user's IDE answering a `preview_request` it was sent.
     PreviewResponse {
         id: u64,
@@ -1871,6 +1873,10 @@ async fn handle_client_message(
         }
         ClientMessage::PreviewStop => {
             stop_preview(state, session_id, user_id).await;
+            None
+        }
+        ClientMessage::PreviewChanged => {
+            state.previews.notify_changed(session_id, user_id);
             None
         }
         ClientMessage::PreviewResponse { id, reply } => {

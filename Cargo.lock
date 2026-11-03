@@ -217,6 +217,7 @@ dependencies = [
  "chrono",
  "clock",
  "dotenvy",
+ "futures-util",
  "hmac",
  "jsonwebtoken",
  "reqwest",

@@ -190,6 +190,7 @@ async fn main() {
         .layer(GovernorLayer::new(global_governor_conf))
         // Added after the layers so they're outside the per-IP rate limit:
         // one page load of a dev app makes dozens of asset requests.
+        .route(preview::EVENTS_PATH, get(preview::events))
         .route("/preview/{token}", any(preview::open))
         .route("/preview/{token}/", any(preview::open))
         .route("/preview/{token}/{*rest}", any(preview::open))
