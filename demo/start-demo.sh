@@ -66,30 +66,41 @@ SESSION=$(curl -s -X POST "$BASE/sessions" -H "authorization: Bearer $ALICE_TOKE
 curl -s -o /dev/null -X POST "$BASE/sessions/$SESSION/join" -H "authorization: Bearer $BOB_TOKEN"
 echo "$SESSION" >"$STATE/session_id"
 
-# Wrap the dev binary in an .app (a hard link, no copy) so macOS treats the
-# demo windows as a real app: Dock icon, screen recording pickers, etc. It must
-# live inside the i-ide checkout: dev builds find their assets via its .git.
-APP="$HOME/i-ide/target/demo/IIdeDev.app"
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
-ln "$IDE" "$APP/Contents/MacOS/i-ide" 2>/dev/null || cp "$IDE" "$APP/Contents/MacOS/i-ide"
-cat >"$APP/Contents/Info.plist" <<'PLIST'
+# Each person's window is its own .app wrapping the dev binary (a hard link, no
+# copy), so macOS treats them as separate apps: their own Dock icon ("I – Bob"),
+# screen-recording picker entry, and automation can tell them apart. The
+# wrappers must live inside the i-ide checkout: dev builds find their assets via
+# its .git.
+make_app() {
+  local name=$1 label=$2
+  local app="$HOME/i-ide/target/demo/I-$label.app"
+  rm -rf "$app"
+  mkdir -p "$app/Contents/MacOS"
+  ln "$IDE" "$app/Contents/MacOS/i-ide" 2>/dev/null || cp "$IDE" "$app/Contents/MacOS/i-ide"
+  cat >"$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleIdentifier</key><string>dev.iide.debug</string>
-  <key>CFBundleName</key><string>IIdeDev</string>
+  <key>CFBundleIdentifier</key><string>dev.iide.demo.$name</string>
+  <key>CFBundleName</key><string>I – $label</string>
   <key>CFBundleExecutable</key><string>i-ide</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict>
 </plist>
 PLIST
+  echo "$app"
+}
+rm -rf "$HOME/i-ide/target/demo/IIdeDev.app"
 
 launch() {
   local name=$1 token=$2 user_id=$3
   local home="$STATE/$name"
+  local label
+  label="$(printf '%s' "${name:0:1}" | tr '[:lower:]' '[:upper:]')${name:1}"
+  local APP
+  APP=$(make_app "$name" "$label")
   mkdir -p "$home/data/config"
   cp -R "$DEMO/project-template" "$home/tiny-tasks"
   cat >"$home/data/config/settings.json" <<'JSON'
