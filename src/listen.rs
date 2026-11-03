@@ -39,9 +39,10 @@ already said. Keep replies to 1-3 sentences.
 Answer with one JSON object and nothing else:
 {\"action\":\"pass\"} to stay quiet,
 {\"action\":\"reply\",\"text\":\"...\"} to say something,
-{\"action\":\"reference\",\"text\":\"...\"} when the team has just agreed on a plan: text is a \
-one-line confirmation of what was agreed, and the shared reference file will be written from \
-the discussion.
+{\"action\":\"reference\",\"text\":\"...\"} only when someone has explicitly agreed to a plan \
+that was just proposed (\"agreed\", \"sounds good, let's build it\"), not while it's still being \
+discussed: text is a one-line confirmation of what was agreed, and the shared reference file will \
+be written from the discussion.
 
 Shared reference so far:
 {reference}
@@ -98,9 +99,30 @@ pub fn worth_considering(text: &str) -> bool {
 #[derive(Clone, Default)]
 pub struct Limits {
     spoke: Arc<Mutex<HashMap<String, VecDeque<Instant>>>>,
+    // When the agent last rewrote each session's reference on its own.
+    referenced: Arc<Mutex<HashMap<String, Instant>>>,
 }
 
+/// The agent rewrites the reference by itself at most this often; "@agent
+/// blueprint" still does it any time.
+const REFERENCE_INTERVAL: Duration = Duration::from_secs(10 * 60);
+
 impl Limits {
+    /// Whether the agent may rewrite the reference now, recording it if so.
+    pub fn take_reference_turn(&self, session_id: &str, now: Instant) -> bool {
+        let Ok(mut referenced) = self.referenced.lock() else {
+            return false;
+        };
+        if referenced
+            .get(session_id)
+            .is_some_and(|last| now.duration_since(*last) < REFERENCE_INTERVAL)
+        {
+            return false;
+        }
+        referenced.insert(session_id.to_string(), now);
+        true
+    }
+
     /// How long until the agent may speak again: zero now, `None` when the
     /// hourly cap is reached.
     pub fn wait_before_speaking(&self, session_id: &str, now: Instant) -> Option<Duration> {
@@ -202,10 +224,21 @@ async fn consider(state: &AppState, session_id: &str) {
             agent::broadcast_agent_reply(state, session_id, text).await;
         }
         Decision::Reference { text } => {
-            state.listen_limits.note_spoke(session_id, Instant::now());
-            agent::broadcast_agent_reply(state, session_id, format!("{text} Writing it into the shared reference now."))
+            let now = Instant::now();
+            state.listen_limits.note_spoke(session_id, now);
+            if state.listen_limits.take_reference_turn(session_id, now) {
+                agent::broadcast_agent_reply(state, session_id, format!("{text} Writing it into the shared reference now."))
+                    .await;
+                tokio::spawn(agent::run_blueprint_job(state.clone(), session_id.to_string()));
+            } else {
+                // Rewritten recently: say it, and leave the file to "@agent blueprint".
+                agent::broadcast_agent_reply(
+                    state,
+                    session_id,
+                    format!("{text} (The reference was just updated; write \"@agent blueprint\" to refresh it again.)"),
+                )
                 .await;
-            tokio::spawn(agent::run_blueprint_job(state.clone(), session_id.to_string()));
+            }
         }
     }
 }
@@ -285,6 +318,16 @@ mod tests {
         let later = start + COOLDOWN * HOURLY_CAP as u32;
         assert!(!limits.may_speak("s1", later), "capped for the hour");
         assert!(limits.may_speak("s1", start + Duration::from_secs(3600) + COOLDOWN * 2));
+    }
+
+    #[test]
+    fn the_reference_is_rewritten_at_most_once_per_interval() {
+        let limits = Limits::default();
+        let start = Instant::now();
+        assert!(limits.take_reference_turn("s1", start));
+        assert!(!limits.take_reference_turn("s1", start + Duration::from_secs(60)));
+        assert!(limits.take_reference_turn("s2", start), "sessions are separate");
+        assert!(limits.take_reference_turn("s1", start + REFERENCE_INTERVAL));
     }
 
     #[test]
