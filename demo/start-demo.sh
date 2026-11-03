@@ -106,7 +106,8 @@ launch() {
   cat >"$home/data/config/settings.json" <<'JSON'
 {
   "collab_mode": "multi",
-  "session": { "trust_all_worktrees": true }
+  "session": { "trust_all_worktrees": true },
+  "extend_comment_on_newline": false
 }
 JSON
   # Linked, not copied, so the demo windows see your saved AI keys.
