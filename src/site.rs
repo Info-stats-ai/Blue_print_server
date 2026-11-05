@@ -18,6 +18,7 @@ use crate::models::OkResponse;
 
 const CSS: &str = include_str!("../site/style.css");
 const NAV: &str = include_str!("../site/nav.html");
+const SIM: &str = include_str!("../site/claim-sim.js");
 const HOME: &str = include_str!("../site/index.html");
 const DOWNLOAD: &str = include_str!("../site/download.html");
 const DOCS: &str = include_str!("../site/docs.html");
@@ -25,16 +26,24 @@ const SIGNIN: &str = include_str!("../site/signin.html");
 
 const DOC_PAGES: &[&str] = &[
     "quickstart",
+    "tutorial",
     "sign-in",
     "solo-and-sync",
     "sessions",
-    "claims",
-    "conflicts",
+    "chat",
+    "tasks",
+    "sync",
     "previews",
     "your-ai",
+    "claims",
+    "conflicts",
     "team-agent",
+    "reference-doc",
+    "controls",
     "limits",
     "security",
+    "troubleshooting",
+    "faq",
 ];
 
 const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
@@ -43,7 +52,7 @@ const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
     base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 fn html(template: &str) -> Response {
-    let body = template.replace("{{CSS}}", CSS).replace("{{NAV}}", NAV);
+    let body = template.replace("{{CSS}}", CSS).replace("{{NAV}}", NAV).replace("{{SIM}}", SIM);
     (
         [
             (header::CONTENT_TYPE, "text/html; charset=utf-8"),

@@ -5,77 +5,221 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>I: the code editor for teams working with AI</title>
 <meta name="description" content="Everyone can see who is working on what, and each AI agent claims the function it's changing, so collisions stop before they become merge conflicts.">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
 <style>{{CSS}}</style>
 </head>
-<body>
-<div class="wrap">
-  {{NAV}}
-  <div class="hero">
-    <div class="stack">
-      <h1>Your team's AI agents are about to edit the same function.</h1>
-      <p class="lede">I is a code editor for teams working with AI. Everyone can see who is working on what, and each agent claims the function it's changing, so collisions stop before they become merge conflicts.</p>
-      <a class="button" href="/download">Join the waitlist</a>
-    </div>
-    <div class="editor" role="img" aria-label="An editor showing Alice's agent holding complete_task. Bob's agent can still work on add_task in the same file, but its request for complete_task is refused.">
-      <div class="tab">tasks.py · example</div>
-      <div class="code">
-        <div class="line held-a"><span class="n">12</span><span>def complete_task(task_id):</span><span class="owner">  Alice's agent</span></div>
-        <div class="line held-a"><span class="n">13</span><span>    task = find(task_id)</span></div>
-        <div class="line held-a"><span class="n">14</span><span>    task.done = True</span></div>
-        <div class="line"><span class="n">15</span><span> </span></div>
-        <div class="line held-b"><span class="n">16</span><span>def add_task(title):</span><span class="owner">  Bob's agent</span></div>
-        <div class="line held-b"><span class="n">17</span><span>    return Task(title=title)</span></div>
+<body class="home">
+<div class="frame" aria-hidden="true"></div>
+{{NAV}}
+<main>
+  <section class="h-hero">
+    <canvas id="hero-art" aria-hidden="true"></canvas>
+    <div class="h-hero-copy">
+      <h1>The code editor for teams<br><span class="dim">working with AI agents</span></h1>
+      <p>See who is working on what, split the work up front, and stop<br class="wide"> agents from changing the same function at once.</p>
+      <div class="h-actions">
+        <a class="pill" href="/download">Join the waitlist <span aria-hidden="true">»</span></a>
+        <a class="pill solid" href="/docs">Read the docs</a>
       </div>
-      <div class="refusal"><strong>Bob's agent asked for complete_task.</strong> Refused: Alice's agent is working on it. Both agents keep working in the same file.</div>
     </div>
-  </div>
-
-  <section>
-    <div class="head">
-      <h2>One editor, solo or with the whole team</h2>
-      <p>Work alone with collaboration turned off. Sync when you want your team, and their agents, in the same session.</p>
-    </div>
-    <div class="grid3">
-      <div class="item"><h3>Claims by function</h3><p>Agents reserve the function they're changing, so two of them can work in one file without overwriting each other.</p></div>
-      <div class="item"><h3>Conflicts in one view</h3><p>A dashboard shows where people and agents overlap while the work is still in progress.</p></div>
-      <div class="item"><h3>A team agent that listens</h3><p>Turn it on and it follows the team chat, flags ownership clashes, and records what you agreed in a shared reference.</p></div>
-      <div class="item"><h3>Your own AI knows the team</h3><p>Mention your agent in chat, and it can check what your teammates are working on before it starts.</p></div>
-      <div class="item"><h3>Shared previews</h3><p>Give teammates a private link to the app on your localhost. It reloads for them when you change a file.</p></div>
-      <div class="item"><h3>Clear division of work</h3><p>A shared goal and task board show who picked up which part of the job.</p></div>
+    <div class="marquee" aria-label="Agents you can set up in I: Claude Agent, Codex, GitHub Copilot and Cursor">
+      <div class="marquee-track" aria-hidden="true">
+        <span>Claude Agent</span><span>Codex</span><span>GitHub Copilot</span><span>Cursor</span><span>Claude Agent</span><span>Codex</span><span>GitHub Copilot</span><span>Cursor</span><span>Claude Agent</span><span>Codex</span><span>GitHub Copilot</span><span>Cursor</span><span>Claude Agent</span><span>Codex</span><span>GitHub Copilot</span><span>Cursor</span>
+      </div>
     </div>
   </section>
 
-  <section>
-    <div class="head">
-      <h2>More agents can work at once</h2>
-      <p>File locks cap a team at one agent per file. In our simulation of 4 files with 10 functions each, function-level claims kept far more agents working as the team grew.</p>
+  <section class="h-section" id="product">
+    <div class="h-head">
+      <h2>One session.<br><span class="dim">Everyone's work in view.</span></h2>
+      <p>People and their agents share a goal, a chat and a live picture of who holds what. Choose a view below to see how a session works.</p>
+    </div>
+    <div class="app" data-app data-view="claims">
+      <div class="app-bar"><span class="app-dot"></span><span class="app-dot"></span><span class="app-dot"></span><span class="app-title">Add task reminders · example session</span></div>
+      <div class="app-body">
+        <div class="app-side" aria-hidden="true">
+          <b>I-mode</b>
+          <span data-side="claims">Chat</span>
+          <span data-side="tasks">Tasks</span>
+          <span data-side="team">Team</span>
+          <small>People</small>
+          <span class="who a">Alice</span>
+          <span class="who b">Bob</span>
+        </div>
+        <div class="app-main">
+          <div class="view" data-show="claims">
+            <div class="tl-head"><span>tasks.py</span><span class="tl-note">Who holds each function right now</span></div>
+            <div class="tl-row"><code>complete_task</code><span class="tl-track"><i class="hold a" style="left:6%;width:62%">Alice's agent</i></span></div>
+            <div class="tl-row"><code>add_task</code><span class="tl-track"><i class="hold b" style="left:24%;width:58%">Bob's agent</i></span></div>
+            <div class="tl-row"><code>remind_at</code><span class="tl-track"><i class="hold a" style="left:44%;width:44%">Alice's agent</i></span></div>
+            <div class="tl-row"><code>send_reminder</code><span class="tl-track"><i class="hold b" style="left:68%;width:28%">Bob's agent</i></span></div>
+            <p class="tl-event"><strong>Collision avoided:</strong> Bob's agent stepped back from complete_task; Alice's agent is already changing it.</p>
+          </div>
+          <div class="view" data-show="tasks" hidden>
+            <div class="tl-head"><span>Task board</span><span class="tl-note">One owner per task</span></div>
+            <div class="task"><span class="who a">Alice</span><span>Store a reminder time on each task</span><em>In progress</em></div>
+            <div class="task"><span class="who b">Bob</span><span>Add the reminder form</span><em>In progress</em></div>
+            <div class="task"><span class="who a">Alice</span><span>Send reminders when they're due</span><em>Up next</em></div>
+            <div class="task"><span class="who b">Bob</span><span>Write tests for reminders</span><em>Up next</em></div>
+          </div>
+          <div class="view" data-show="team" hidden>
+            <div class="tl-head"><span>Team</span><span class="tl-note">Live in the session</span></div>
+            <div class="task"><span class="who a">Alice</span><span>Editing tasks.py</span><em>Agent working</em></div>
+            <div class="task"><span class="who b">Bob</span><span>Editing reminders.py</span><em>Agent working</em></div>
+            <div class="task"><span class="who">Changed</span><span>3 files this session</span><em>Open file</em></div>
+            <div class="task"><span class="who">Caught</span><span>1 conflict before it landed</span><em>This session</em></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="h-tabs" role="tablist" aria-label="Session views">
+      <button type="button" role="tab" aria-selected="true" data-tab="claims"><b>Claim by function.</b> Agents reserve what they change, so two can share a file.</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="tasks"><b>Split the work.</b> Turn your discussion into tasks with one owner each.</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="team"><b>See the team.</b> Know who is active, what changed and what was caught.</button>
+    </div>
+  </section>
+
+  <section class="h-section" id="features">
+    <div class="h-head">
+      <h2>Built for shared code.<br><span class="dim">Careful with it too.</span></h2>
+      <p>The tools a team needs once several agents are writing code in the same project at the same time.</p>
+    </div>
+    <div class="bento">
+      <figure class="tile wide-tile">
+        <div class="tile-art"><div class="claim-sim" data-sim></div></div>
+        <figcaption><b>Function claims.</b> Try it: act as an agent and claim a function, then compare with file locks.</figcaption>
+      </figure>
+      <figure class="tile">
+        <div class="tile-art list">
+          <div class="req"><span>bob@example.com wants to join</span><em>Decline</em><em class="on">Approve</em></div>
+          <div class="req"><span>sam@example.com wants to join</span><em>Decline</em><em class="on">Approve</em></div>
+        </div>
+        <figcaption><b>Owner approval.</b> An invite link only lets someone ask. The session owner lets them in.</figcaption>
+      </figure>
+      <figure class="tile">
+        <div class="tile-art list">
+          <div class="rule"><span>Shared AI spend</span><em>About $2 a day</em></div>
+          <div class="rule"><span>Shared previews</span><em>2 hours at most</em></div>
+          <div class="rule"><span>Agent commands</span><em>Allow or deny</em></div>
+        </div>
+        <figcaption><b>Built-in limits.</b> Spending, previews and agent commands stay within bounds.</figcaption>
+      </figure>
+      <figure class="tile">
+        <div class="tile-art list">
+          <div class="msg"><b>Team agent</b><span>You agreed Bob owns the form, but both of you mentioned it. Worth confirming.</span></div>
+          <div class="msg"><b>Reference updated</b><span>Saved the plan your team just agreed on.</span></div>
+        </div>
+        <figcaption><b>A team agent that listens.</b> It flags clashes and records decisions, and stays quiet otherwise.</figcaption>
+      </figure>
+      <figure class="tile">
+        <div class="tile-art list">
+          <div class="rule"><span>Alice's app · port 3000</span><em class="on">Open</em></div>
+          <div class="rule"><span>Reloads when she changes a file</span><em>Live</em></div>
+        </div>
+        <figcaption><b>Shared previews.</b> Give teammates a private link to the app on your localhost.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="h-section" id="benchmarks">
+    <div class="h-head">
+      <h2>More agents working.<br><span class="dim">Tested up to 25 at once.</span></h2>
+      <p>File locks cap a team at one agent per file. Our benchmark compares that with function claims across 4 files of 10 functions each.</p>
+    </div>
+    <div class="metrics">
+      <div class="metric"><span>Parallel work at 25 agents</span><b>4.3×</b><small>86 agents working vs 20 with file locks</small></div>
+      <div class="metric"><span>Overlaps missed</span><b>0</b><small>And 0 claims wrongly refused</small></div>
+      <div class="metric"><span>Message delivery, 95th percentile</span><b>3.8 ms</b><small>25 users on localhost, network excluded</small></div>
+      <div class="metric"><span>Team agent, 60-message chat</span><b>$0.0057</b><small>Estimated from token counts</small></div>
     </div>
     <div class="scroll">
-      <table>
-        <thead><tr><th>Agents per trial</th><th>Total claims</th><th>Working with function claims</th><th>Working with file locks</th><th>Gain</th></tr></thead>
+      <table class="h-table">
+        <thead><tr><th>Agents</th><th>Claims</th><th>Working with function claims</th><th>Working with file locks</th><th>Gain</th></tr></thead>
         <tbody>
-          <tr><td>5</td><td>25</td><td>24</td><td>17</td><td class="gain">1.4×</td></tr>
-          <tr><td>10</td><td>50</td><td>46</td><td>20</td><td class="gain">2.3×</td></tr>
-          <tr><td>25</td><td>125</td><td>86</td><td>20</td><td class="gain">4.3×</td></tr>
+          <tr><td>5</td><td>25</td><td>24</td><td>17</td><td>1.4×</td></tr>
+          <tr><td>10</td><td>50</td><td>46</td><td>20</td><td>2.3×</td></tr>
+          <tr><td>25</td><td>125</td><td>86</td><td>20</td><td>4.3×</td></tr>
         </tbody>
       </table>
     </div>
-    <div class="grid3" style="margin-top:40px">
-      <div class="stat"><b>0</b><span>real overlaps missed and 0 claims wrongly refused across the runs above</span></div>
-      <div class="stat"><b>3.8 ms</b><span>95th percentile message delivery with 25 simulated users, on localhost</span></div>
-      <div class="stat"><b>$0.0057</b><span>estimated model cost for the team agent to follow a 60-message chat</span></div>
-    </div>
-    <p class="method"><strong>How to read these numbers.</strong> They come from a scripted benchmark on a MacBook using simulated users and agents, not from real teams. Each row totals 5 trials. Latency excludes the network, which added about 87 ms to our hosted server. Cost is estimated from token counts, not taken from an invoice.</p>
+    <p class="h-note">From a scripted benchmark on a MacBook with simulated users and agents, not real teams. Each row totals 5 trials. The network added about 87 ms to our hosted server.</p>
   </section>
-  <section class="split">
-    <div class="head">
-      <h2>Get early access</h2>
-      <p>We're looking for small teams already using AI agents on a shared codebase.</p>
+
+  <section class="h-final">
+    <h2>Stop untangling your agents.<br><span class="dim">Let them share the work.</span></h2>
+    <p>We're looking for small teams already using AI agents on a shared codebase.</p>
+    <div class="h-actions">
+      <a class="pill" href="/download">Join the waitlist <span aria-hidden="true">»</span></a>
+      <a class="pill solid" href="/docs/tutorial">See the tutorial</a>
     </div>
-    <div class="stack"><a class="button" href="/download">Join the waitlist</a></div>
   </section>
-  <footer>I is in private development.</footer>
-</div>
+</main>
+<footer class="h-footer">
+  <div class="h-foot-brand">
+    <p>The code editor for teams working with AI agents.</p>
+  </div>
+  <div><h3>Product</h3><a href="/#product">Overview</a><a href="/#features">Features</a><a href="/#benchmarks">Benchmarks</a><a href="/download">Download</a></div>
+  <div><h3>Docs</h3><a href="/docs/quickstart">Quickstart</a><a href="/docs/tutorial">Tutorial</a><a href="/docs/troubleshooting">Troubleshooting</a></div>
+  <div><h3>Trust</h3><a href="/docs/security">Security and data</a><a href="/docs/limits">AI limits</a><a href="/auth/signin">Sign in</a></div>
+  <p class="h-foot-note">I is in private development.</p>
+</footer>
+<script>{{SIM}}</script>
+<script>
+(function () {
+  // Session views.
+  var app = document.querySelector("[data-app]");
+  var tabs = document.querySelectorAll("[data-tab]");
+  function select(view) {
+    tabs.forEach(function (tab) { tab.setAttribute("aria-selected", String(tab.dataset.tab === view)); });
+    app.querySelectorAll("[data-show]").forEach(function (panel) { panel.hidden = panel.dataset.show !== view; });
+    app.querySelectorAll("[data-side]").forEach(function (item) { item.classList.toggle("on", item.dataset.side === view); });
+  }
+  tabs.forEach(function (tab) { tab.addEventListener("click", function () { select(tab.dataset.tab); }); });
+  select("claims");
+
+  // Hero art: lines that fan out at the top and bottom and pinch to a stem, an I drawn from many paths.
+  var canvas = document.getElementById("hero-art");
+  var context = canvas.getContext("2d");
+  var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var visible = true;
+  function draw(time) {
+    var scale = window.devicePixelRatio || 1;
+    var width = canvas.clientWidth, height = canvas.clientHeight;
+    if (canvas.width !== Math.round(width * scale) || canvas.height !== Math.round(height * scale)) {
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+    }
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+    context.clearRect(0, 0, width, height);
+    var count = width < 600 ? 70 : 130;
+    var waist = Math.min(width * 0.05, 46);
+    for (var i = 0; i < count; i++) {
+      var side = (i / (count - 1)) * 2 - 1;
+      context.beginPath();
+      for (var step = 0; step <= 70; step++) {
+        var y = step / 70;
+        var flare = Math.pow(Math.abs(2 * y - 1), 5);
+        var wobble = Math.sin(y * 7 + time * 0.0005 + i * 0.09) * (1.5 + 10 * flare);
+        var x = width / 2 + side * (waist + flare * width * 0.62) + wobble;
+        if (step === 0) context.moveTo(x, y * height); else context.lineTo(x, y * height);
+      }
+      var edge = 1 - Math.abs(side) * 0.55;
+      context.strokeStyle = "rgba(235,240,245," + (0.20 * edge).toFixed(3) + ")";
+      context.lineWidth = 0.7;
+      context.stroke();
+    }
+  }
+  function frame(time) {
+    if (visible) draw(time);
+    requestAnimationFrame(frame);
+  }
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (entries) { visible = entries[0].isIntersecting; }).observe(canvas);
+  }
+  draw(0);
+  if (still) window.addEventListener("resize", function () { draw(0); });
+  else requestAnimationFrame(frame);
+})();
+</script>
 </body>
 </html>
