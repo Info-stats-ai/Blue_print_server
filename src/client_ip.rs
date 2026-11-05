@@ -17,7 +17,11 @@ pub struct ClientIp {
 
 impl ClientIp {
     pub fn from_env() -> Self {
-        Self { behind_proxy: std::env::var_os("RAILWAY_ENVIRONMENT").is_some() }
+        let behind_proxy = ["RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_ID", "RAILWAY_PROJECT_ID", "RAILWAY_PUBLIC_DOMAIN"]
+            .iter()
+            .any(|name| std::env::var_os(name).is_some());
+        println!("rate limits: by {}", if behind_proxy { "X-Real-IP" } else { "peer address" });
+        Self { behind_proxy }
     }
 
     fn resolve(self, headers: &HeaderMap, peer: Option<IpAddr>) -> Option<IpAddr> {
