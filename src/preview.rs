@@ -14,7 +14,8 @@
 use axum::body::{Body, to_bytes};
 use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
-use axum::response::{IntoResponse, Response};
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Redirect, Response};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::Deserialize;
@@ -50,7 +51,11 @@ pub struct Share {
     pub session_id: String,
     pub user_id: String,
     pub port: u16,
+    expires: std::time::Instant,
 }
+
+/// A forgotten share shouldn't leave someone's localhost reachable for days.
+const SHARE_LIFETIME: Duration = Duration::from_secs(2 * 60 * 60);
 
 #[derive(Debug, Deserialize)]
 pub struct Reply {
@@ -84,6 +89,7 @@ impl Previews {
                     session_id: session_id.to_string(),
                     user_id: user_id.to_string(),
                     port,
+                    expires: std::time::Instant::now() + SHARE_LIFETIME,
                 },
             );
         }
@@ -135,7 +141,12 @@ impl Previews {
     }
 
     pub fn get(&self, token: &str) -> Option<Share> {
-        self.shares.lock().ok()?.get(token).cloned()
+        self.shares
+            .lock()
+            .ok()?
+            .get(token)
+            .filter(|share| share.expires > std::time::Instant::now())
+            .cloned()
     }
 
     /// The live shares in a session: (user id, port, token).
@@ -145,7 +156,7 @@ impl Previews {
         };
         let mut found: Vec<_> = shares
             .iter()
-            .filter(|(_, share)| share.session_id == session_id)
+            .filter(|(_, share)| share.session_id == session_id && share.expires > std::time::Instant::now())
             .map(|(token, share)| (share.user_id.clone(), share.port, token.clone()))
             .collect();
         found.sort();
@@ -223,7 +234,7 @@ pub async fn open(State(state): State<AppState>, Path(params): Path<HashMap<Stri
 /// preview cookie, if there is one.
 pub async fn fallback(State(state): State<AppState>, request: Request) -> Response {
     let Some(token) = cookie_token(request.headers()) else {
-        return (StatusCode::NOT_FOUND, "Not found").into_response();
+        return crate::site::page(request.uri().path());
     };
     let path = request
         .uri()
@@ -231,6 +242,36 @@ pub async fn fallback(State(state): State<AppState>, request: Request) -> Respon
         .map(|path| path.as_str().to_string())
         .unwrap_or_else(|| "/".to_string());
     relay(&state, &token, path, request).await
+}
+
+/// With `PREVIEW_HOST` set, shared apps only run on that host, and it serves
+/// nothing else. A shared app is someone else's code, so it must not share an
+/// origin with the sign-in page and the API.
+pub async fn separate_hosts(State(state): State<AppState>, mut request: Request, next: Next) -> Response {
+    let Some(preview_host) = state.preview_host.clone() else {
+        return next.run(request).await;
+    };
+    let host = request.headers().get(header::HOST).and_then(|host| host.to_str().ok()).unwrap_or_default();
+    let on_preview_host = host == preview_host;
+    let path = request.uri().path().to_string();
+    let opens_share = path.starts_with("/preview/");
+    if !on_preview_host {
+        if opens_share {
+            let target = request.uri().path_and_query().map_or(path.as_str(), |target| target.as_str());
+            return Redirect::temporary(&format!("https://{preview_host}{target}")).into_response();
+        }
+        // This host's fallback never relays, even with a cookie from before
+        // the split.
+        request.headers_mut().remove(header::COOKIE);
+        return next.run(request).await;
+    }
+    if opens_share || path == EVENTS_PATH {
+        return next.run(request).await;
+    }
+    if cookie_token(request.headers()).is_none() {
+        return (StatusCode::NOT_FOUND, "Not found").into_response();
+    }
+    fallback(State(state), request).await
 }
 
 /// The path preview pages listen on for "the sharer changed a file". Served by
@@ -425,6 +466,15 @@ mod tests {
         assert!(bob_page.try_recv().is_err());
         previews.stop("s1", "alice");
         assert!(matches!(alice_page.recv().await, Err(broadcast::error::RecvError::Closed)));
+    }
+
+    #[test]
+    fn an_expired_share_stops_answering() {
+        let previews = Previews::default();
+        let token = previews.start("s1", "alice", 3000);
+        previews.shares.lock().unwrap().get_mut(&token).unwrap().expires = std::time::Instant::now();
+        assert_eq!(previews.get(&token), None);
+        assert!(previews.in_session("s1").is_empty());
     }
 
     #[test]

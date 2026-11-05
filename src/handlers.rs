@@ -12,7 +12,7 @@ use crate::errors::AppError;
 use crate::models::{
     Contract, ContractResponse, CreatePlanRequest, CreateContractRequest, CreateIntentRequest,
     CreateSessionRequest, ExecutionPlan, Intent, IntentResponse, InviteRequest, ListQuery,
-    OkResponse, PlanResponse, RejectPlanRequest, Session, SessionResponse, UpdateContractRequest,
+    AnswerJoinRequest, JoinRequestInfo, JoinResponse, JoinSessionRequest, OkResponse, PlanResponse, RejectPlanRequest, Session, SessionResponse, UpdateContractRequest,
     UpdateIntentRequest,
 };
 use crate::AppState;
@@ -86,10 +86,11 @@ pub async fn create_session(
     }
 
     let id = Uuid::new_v4().to_string();
+    let invite_token = Uuid::new_v4().simple().to_string();
     let now = Utc::now();
 
     sqlx::query(
-        "INSERT INTO sessions (id, name, owner_id, created_at, has_leader, goal) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO sessions (id, name, owner_id, created_at, has_leader, goal, invite_token) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&payload.name)
@@ -97,6 +98,7 @@ pub async fn create_session(
     .bind(now)
     .bind(payload.has_leader)
     .bind(&payload.goal)
+    .bind(&invite_token)
     .execute(&state.pool)
     .await?;
 
@@ -118,7 +120,7 @@ pub async fn create_session(
         goal: payload.goal,
     };
 
-    Ok(Json(SessionResponse { session }))
+    Ok(Json(SessionResponse { session, invite_token }))
 }
 
 pub async fn list_sessions(
@@ -141,25 +143,125 @@ pub async fn join_session(
     State(state): State<AppState>,
     Extension(AuthUser(user_id)): Extension<AuthUser>,
     Path(session_id): Path<String>,
+    payload: Option<Json<JoinSessionRequest>>,
+) -> Result<Json<JoinResponse>, AppError> {
+    let session: Option<(Option<String>, String)> =
+        sqlx::query_as("SELECT invite_token, owner_id FROM sessions WHERE id = ?")
+            .bind(&session_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let Some((invite_token, owner_id)) = session else {
+        return Err(AppError::NotFound("session not found".into()));
+    };
+    let already_member: Option<(String,)> =
+        sqlx::query_as("SELECT user_id FROM session_members WHERE session_id = ? AND user_id = ?")
+            .bind(&session_id)
+            .bind(&user_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    if already_member.is_some() {
+        return Ok(Json(JoinResponse { ok: true, pending: false }));
+    }
+    let offered = payload.and_then(|Json(payload)| payload.invite);
+    if !invite_matches(invite_token.as_deref(), offered.as_deref()) {
+        // The same answer as an unknown session, so a guessed or leaked id
+        // doesn't confirm that the session exists.
+        return Err(AppError::NotFound("session not found, or the invite isn't valid".into()));
+    }
+
+    let status: Option<String> =
+        sqlx::query_scalar("SELECT status FROM session_join_requests WHERE session_id = ? AND user_id = ?")
+            .bind(&session_id)
+            .bind(&user_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    match status.as_deref() {
+        Some("declined") => {
+            return Err(AppError::Unauthorized("the session owner declined this request".into()));
+        }
+        Some(_) => {}
+        None => {
+            sqlx::query(
+                "INSERT INTO session_join_requests (session_id, user_id, status, requested_at) VALUES (?, ?, 'pending', ?)",
+            )
+            .bind(&session_id)
+            .bind(&user_id)
+            .bind(Utc::now())
+            .execute(&state.pool)
+            .await?;
+            notify_owner_of_requests(&state, &session_id, &owner_id).await;
+        }
+    }
+    Ok(Json(JoinResponse { ok: true, pending: true }))
+}
+
+/// Who is waiting to be let in. Their emails only go to the owner.
+pub async fn pending_join_requests(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<JoinRequestInfo> {
+    sqlx::query_as(
+        "SELECT r.user_id, u.email FROM session_join_requests r JOIN users u ON u.id = r.user_id \
+         WHERE r.session_id = ? AND r.status = 'pending' ORDER BY r.requested_at",
+    )
+    .bind(session_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default()
+}
+
+async fn notify_owner_of_requests(state: &AppState, session_id: &str, owner_id: &str) {
+    let requests = pending_join_requests(&state.pool, session_id).await;
+    state
+        .hub
+        .send_to_user(session_id, owner_id, &serde_json::json!({"type": "join_requests", "requests": requests}))
+        .await;
+}
+
+/// `PUT /sessions/{id}/join-requests/{user_id}`: the owner lets someone in or
+/// turns them away.
+pub async fn answer_join_request(
+    State(state): State<AppState>,
+    Extension(AuthUser(user_id)): Extension<AuthUser>,
+    Path((session_id, requester_id)): Path<(String, String)>,
+    Json(payload): Json<AnswerJoinRequest>,
 ) -> Result<Json<OkResponse>, AppError> {
-    let exists: Option<(String,)> = sqlx::query_as("SELECT id FROM sessions WHERE id = ?")
+    let owner_id: Option<String> = sqlx::query_scalar("SELECT owner_id FROM sessions WHERE id = ?")
         .bind(&session_id)
         .fetch_optional(&state.pool)
         .await?;
-    if exists.is_none() {
-        return Err(AppError::NotFound("session not found".into()));
+    if owner_id.as_deref() != Some(user_id.as_str()) {
+        return Err(AppError::Unauthorized("only the session owner can answer join requests".into()));
     }
-
-    let now = Utc::now();
-    sqlx::query(
-        "INSERT OR IGNORE INTO session_members (session_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)",
+    let pending: Option<String> = sqlx::query_scalar(
+        "SELECT user_id FROM session_join_requests WHERE session_id = ? AND user_id = ? AND status = 'pending'",
     )
     .bind(&session_id)
-    .bind(&user_id)
-    .bind(now)
-    .execute(&state.pool)
+    .bind(&requester_id)
+    .fetch_optional(&state.pool)
     .await?;
-
+    if pending.is_none() {
+        return Err(AppError::NotFound("no such join request".into()));
+    }
+    if payload.approve {
+        sqlx::query(
+            "INSERT OR IGNORE INTO session_members (session_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)",
+        )
+        .bind(&session_id)
+        .bind(&requester_id)
+        .bind(Utc::now())
+        .execute(&state.pool)
+        .await?;
+        sqlx::query("DELETE FROM session_join_requests WHERE session_id = ? AND user_id = ?")
+            .bind(&session_id)
+            .bind(&requester_id)
+            .execute(&state.pool)
+            .await?;
+    } else {
+        sqlx::query("UPDATE session_join_requests SET status = 'declined' WHERE session_id = ? AND user_id = ?")
+            .bind(&session_id)
+            .bind(&requester_id)
+            .execute(&state.pool)
+            .await?;
+    }
+    notify_owner_of_requests(&state, &session_id, &user_id).await;
     Ok(Json(OkResponse { ok: true }))
 }
 
@@ -177,11 +279,12 @@ pub async fn invite_to_session(
 ) -> Result<Json<OkResponse>, AppError> {
     require_member(&state, &session_id, &user_id).await?;
 
-    let session_name: Option<(String,)> = sqlx::query_as("SELECT name FROM sessions WHERE id = ?")
-        .bind(&session_id)
-        .fetch_optional(&state.pool)
-        .await?;
-    let Some((session_name,)) = session_name else {
+    let session_name: Option<(String, Option<String>)> =
+        sqlx::query_as("SELECT name, invite_token FROM sessions WHERE id = ?")
+            .bind(&session_id)
+            .fetch_optional(&state.pool)
+            .await?;
+    let Some((session_name, invite_token)) = session_name else {
         return Err(AppError::NotFound("session not found".into()));
     };
     let inviter_email: Option<(String,)> = sqlx::query_as("SELECT email FROM users WHERE id = ?")
@@ -195,12 +298,33 @@ pub async fn invite_to_session(
         &payload.email,
         &inviter_email,
         &session_name,
-        &session_id,
+        &invite_code(&session_id, invite_token.as_deref()),
     )
     .await
     .map_err(|error| AppError::Internal(error.to_string()))?;
 
     Ok(Json(OkResponse { ok: true }))
+}
+
+/// What an invite carries: the session id and its secret, "<id>.<secret>".
+pub fn invite_code(session_id: &str, invite_token: Option<&str>) -> String {
+    match invite_token {
+        Some(token) => format!("{session_id}.{token}"),
+        None => session_id.to_string(),
+    }
+}
+
+fn invite_matches(expected: Option<&str>, offered: Option<&str>) -> bool {
+    let (Some(expected), Some(offered)) = (expected, offered) else {
+        return false;
+    };
+    // Compared without stopping at the first difference.
+    expected.len() == offered.len()
+        && expected
+            .bytes()
+            .zip(offered.bytes())
+            .fold(0u8, |diff, (a, b)| diff | (a ^ b))
+            == 0
 }
 
 // ---- Contracts ----
@@ -688,4 +812,94 @@ pub async fn restore_plan(
         .await;
 
     Ok(Json(PlanResponse { status: plan.status.clone(), plan }))
+}
+
+#[cfg(test)]
+mod invite_tests {
+    use super::*;
+
+    #[test]
+    fn joining_needs_the_exact_secret() {
+        assert!(invite_matches(Some("abc123"), Some("abc123")));
+        assert!(!invite_matches(Some("abc123"), Some("abc124")));
+        assert!(!invite_matches(Some("abc123"), Some("abc")));
+        assert!(!invite_matches(Some("abc123"), None));
+        assert!(!invite_matches(None, Some("abc123")));
+        assert_eq!(invite_code("id", Some("secret")), "id.secret");
+    }
+
+    #[tokio::test]
+    async fn an_invite_only_gets_someone_as_far_as_the_owners_answer() {
+        let directory = tempfile::tempdir().unwrap();
+        let url = format!("sqlite://{}", directory.path().join("test.db").display());
+        let pool = crate::db::init_pool(&url).await.unwrap();
+        for user in ["owner", "guest", "stranger"] {
+            sqlx::query("INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, 'h', 'now')")
+                .bind(user)
+                .bind(format!("{user}@x"))
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        sqlx::query(
+            "INSERT INTO sessions (id, name, owner_id, created_at, has_leader, goal, invite_token) \
+             VALUES ('s', 'n', 'owner', 'now', 0, '', 'secret')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let state = crate::test_state(pool.clone());
+        let join = |user: &'static str| {
+            let state = state.clone();
+            async move {
+                join_session(
+                    State(state),
+                    Extension(AuthUser(user.to_string())),
+                    Path("s".to_string()),
+                    Some(Json(JoinSessionRequest { invite: Some("secret".to_string()) })),
+                )
+                .await
+            }
+        };
+        let answer = |user: &'static str, requester: &'static str, approve: bool| {
+            let state = state.clone();
+            async move {
+                answer_join_request(
+                    State(state),
+                    Extension(AuthUser(user.to_string())),
+                    Path(("s".to_string(), requester.to_string())),
+                    Json(AnswerJoinRequest { approve }),
+                )
+                .await
+            }
+        };
+        let is_member = |user: &'static str| {
+            let pool = pool.clone();
+            async move {
+                sqlx::query_scalar::<_, String>("SELECT user_id FROM session_members WHERE session_id = 's' AND user_id = ?")
+                    .bind(user)
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap()
+                    .is_some()
+            }
+        };
+
+        assert!(join("guest").await.unwrap().0.pending);
+        assert!(!is_member("guest").await, "a valid invite alone doesn't make a member");
+        assert_eq!(pending_join_requests(&pool, "s").await[0].email, "guest@x");
+
+        assert!(answer("guest", "guest", true).await.is_err(), "people can't approve themselves");
+        assert!(!is_member("guest").await);
+
+        let _ = answer("owner", "guest", true).await.unwrap();
+        assert!(is_member("guest").await);
+        assert!(!join("guest").await.unwrap().0.pending);
+
+        let _ = join("stranger").await.unwrap();
+        let _ = answer("owner", "stranger", false).await.unwrap();
+        assert!(!is_member("stranger").await);
+        assert!(join("stranger").await.is_err(), "declined stays declined");
+        assert!(pending_join_requests(&pool, "s").await.is_empty());
+    }
 }

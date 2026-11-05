@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I: the code editor for teams working with AI</title>
+<meta name="description" content="Everyone can see who is working on what, and each AI agent claims the function it's changing, so collisions stop before they become merge conflicts.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>{{CSS}}</style>
+</head>
+<body>
+<div class="wrap">
+  {{NAV}}
+  <div class="hero">
+    <div class="stack">
+      <h1>Your team's AI agents are about to edit the same function.</h1>
+      <p class="lede">I is a code editor for teams working with AI. Everyone can see who is working on what, and each agent claims the function it's changing, so collisions stop before they become merge conflicts.</p>
+      <a class="button" href="/download">Join the waitlist</a>
+    </div>
+    <div class="editor" role="img" aria-label="An editor showing Alice's agent holding complete_task. Bob's agent can still work on add_task in the same file, but its request for complete_task is refused.">
+      <div class="tab">tasks.py · example</div>
+      <div class="code">
+        <div class="line held-a"><span class="n">12</span><span>def complete_task(task_id):</span><span class="owner">  Alice's agent</span></div>
+        <div class="line held-a"><span class="n">13</span><span>    task = find(task_id)</span></div>
+        <div class="line held-a"><span class="n">14</span><span>    task.done = True</span></div>
+        <div class="line"><span class="n">15</span><span> </span></div>
+        <div class="line held-b"><span class="n">16</span><span>def add_task(title):</span><span class="owner">  Bob's agent</span></div>
+        <div class="line held-b"><span class="n">17</span><span>    return Task(title=title)</span></div>
+      </div>
+      <div class="refusal"><strong>Bob's agent asked for complete_task.</strong> Refused: Alice's agent is working on it. Both agents keep working in the same file.</div>
+    </div>
+  </div>
+
+  <section>
+    <div class="head">
+      <h2>One editor, solo or with the whole team</h2>
+      <p>Work alone with collaboration turned off. Sync when you want your team, and their agents, in the same session.</p>
+    </div>
+    <div class="grid3">
+      <div class="item"><h3>Claims by function</h3><p>Agents reserve the function they're changing, so two of them can work in one file without overwriting each other.</p></div>
+      <div class="item"><h3>Conflicts in one view</h3><p>A dashboard shows where people and agents overlap while the work is still in progress.</p></div>
+      <div class="item"><h3>A team agent that listens</h3><p>Turn it on and it follows the team chat, flags ownership clashes, and records what you agreed in a shared reference.</p></div>
+      <div class="item"><h3>Your own AI knows the team</h3><p>Mention your agent in chat, and it can check what your teammates are working on before it starts.</p></div>
+      <div class="item"><h3>Shared previews</h3><p>Give teammates a private link to the app on your localhost. It reloads for them when you change a file.</p></div>
+      <div class="item"><h3>Clear division of work</h3><p>A shared goal and task board show who picked up which part of the job.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>More agents can work at once</h2>
+      <p>File locks cap a team at one agent per file. In our simulation of 4 files with 10 functions each, function-level claims kept far more agents working as the team grew.</p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Agents per trial</th><th>Total claims</th><th>Working with function claims</th><th>Working with file locks</th><th>Gain</th></tr></thead>
+        <tbody>
+          <tr><td>5</td><td>25</td><td>24</td><td>17</td><td class="gain">1.4×</td></tr>
+          <tr><td>10</td><td>50</td><td>46</td><td>20</td><td class="gain">2.3×</td></tr>
+          <tr><td>25</td><td>125</td><td>86</td><td>20</td><td class="gain">4.3×</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid3" style="margin-top:40px">
+      <div class="stat"><b>0</b><span>real overlaps missed and 0 claims wrongly refused across the runs above</span></div>
+      <div class="stat"><b>3.8 ms</b><span>95th percentile message delivery with 25 simulated users, on localhost</span></div>
+      <div class="stat"><b>$0.0057</b><span>estimated model cost for the team agent to follow a 60-message chat</span></div>
+    </div>
+    <p class="method"><strong>How to read these numbers.</strong> They come from a scripted benchmark on a MacBook using simulated users and agents, not from real teams. Each row totals 5 trials. Latency excludes the network, which added about 87 ms to our hosted server. Cost is estimated from token counts, not taken from an invoice.</p>
+  </section>
+  <section class="split">
+    <div class="head">
+      <h2>Get early access</h2>
+      <p>We're looking for small teams already using AI agents on a shared codebase.</p>
+    </div>
+    <div class="stack"><a class="button" href="/download">Join the waitlist</a></div>
+  </section>
+  <footer>I is in private development.</footer>
+</div>
+</body>
+</html>

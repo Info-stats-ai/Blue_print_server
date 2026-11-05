@@ -319,10 +319,17 @@ async fn handle_pull_request(state: &AppState, app: &GithubApp, event: PullReque
     let totals = session_totals(&state.pool, &session_id)
         .await
         .map_err(|error| error.to_string())?;
+    let invite_token: Option<String> = sqlx::query_scalar("SELECT invite_token FROM sessions WHERE id = ?")
+        .bind(&session_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|error| error.to_string())?
+        .flatten();
+    let code = crate::handlers::invite_code(&session_id, invite_token.as_deref());
     let join_url = event
         .repository
         .private
-        .then(|| app.public_url.as_ref().map(|url| format!("{url}/join/{session_id}")))
+        .then(|| app.public_url.as_ref().map(|url| format!("{url}/join/{code}")))
         .flatten();
     let body = comment_body(&totals, join_url.as_deref());
 
@@ -448,7 +455,7 @@ pub async fn link_repo(
 /// `GET /join/{id}`: a web page for the join link in PR comments and emails,
 /// which hands off to the IDE (browsers and GitHub won't link to `i-ide://`).
 pub async fn join_page(Path(session_id): Path<String>) -> Response {
-    if session_id.is_empty() || !session_id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+    if session_id.is_empty() || !session_id.chars().all(|c| c.is_ascii_hexdigit() || c == '-' || c == '.') {
         return (StatusCode::NOT_FOUND, "Not found").into_response();
     }
     let link = format!("i-ide://i-mode/join/{session_id}");

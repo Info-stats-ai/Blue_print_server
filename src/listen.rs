@@ -185,6 +185,9 @@ pub async fn on_team_message(state: AppState, session_id: String, text: String) 
 }
 
 async fn consider(state: &AppState, session_id: &str) {
+    if !state.hub.ai_budget.has_room(session_id) {
+        return;
+    }
     // A message that lands during the cooldown (say, "agreed, let's build it"
     // right after the agent spoke) is considered once it ends, not dropped.
     // Still inside the single-flight job, so a burst is weighed together.

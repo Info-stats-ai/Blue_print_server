@@ -203,6 +203,9 @@ async fn run_digest_job(state: AppState, session_id: String) {
 /// Folds every message after the current digest into it, in bounded
 /// batches. Callers that need an up-to-date digest (the planner) await it.
 pub async fn refresh_digest(state: &AppState, session_id: &str) -> Result<(), String> {
+    if !state.hub.ai_budget.has_room(session_id) {
+        return Err("today's limit on the shared AI key is reached".to_string());
+    }
     let names = ws::member_display_names(state, session_id).await;
     loop {
         let (digest, through_id) = state.hub.get_digest(session_id).await;
@@ -369,6 +372,9 @@ pub async fn request_assignment(state: &AppState, session_id: &str, user_id: &st
 }
 
 async fn assign_tasks(state: &AppState, session_id: &str, requested_by: &str) -> Result<(), String> {
+    if !state.hub.ai_budget.has_room(session_id) {
+        return Err("today's limit on the shared AI key is reached".to_string());
+    }
     if let Err(error) = refresh_digest(state, session_id).await {
         // The recent messages still go to the planner verbatim, so a stale
         // digest degrades the plan rather than blocking it.

@@ -41,7 +41,7 @@ pub async fn send_invite(
          Open this link on a computer with the I IDE installed to join:\n\n\
          i-ide://i-mode/join/{session_id}\n\n\
          If the link doesn't open the app, choose \u{201c}Join session\u{2026}\u{201d} from the people menu \
-         next to the I-mode switch and paste the link or this ID:\n\n\
+         next to the I-mode switch and paste the link or this invite code:\n\n\
          {session_id}\n"
     );
 

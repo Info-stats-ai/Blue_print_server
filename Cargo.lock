@@ -230,7 +230,6 @@ dependencies = [
  "tempfile",
  "text",
  "tokio",
- "tower-http",
  "tower_governor",
  "tree-sitter",
  "tree-sitter-go",

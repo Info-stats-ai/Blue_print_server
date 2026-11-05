@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I Docs</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
+<style>{{CSS}}</style>
+</head>
+<body class="docs-body">
+<header class="docs-top">
+  <a class="brand" href="/"><svg class="logo" viewBox="0 0 100 100" width="30" height="30" role="img" aria-label="I" xmlns="http://www.w3.org/2000/svg"><path d="M32 15h36v7.5H54v55h14V85H32v-7.5h14v-55H32z" fill="currentColor"/></svg></a>
+  <a class="docs-tab" href="/docs">Docs</a>
+  <div class="docs-search">
+    <label class="sr" for="docs-search">Search docs</label>
+    <input id="docs-search" type="search" placeholder="Search docs…" autocomplete="off">
+    <div id="docs-results" class="docs-results" hidden></div>
+  </div>
+  <nav aria-label="Main">
+    <a href="/download">Download</a>
+    <a href="/auth/signin">Sign in</a>
+  </nav>
+</header>
+<div class="docs-shell">
+  <aside class="docs-side" aria-label="Documentation">
+    <div><h3>Get started</h3>
+      <a href="/docs">Welcome</a>
+      <a href="/docs/quickstart">Quickstart</a>
+      <a href="/docs/sign-in">Sign in</a>
+      <a href="/docs/solo-and-sync">Solo and sync</a>
+    </div>
+    <div><h3>Working together</h3>
+      <a href="/docs/sessions">Sessions and invites</a>
+      <a href="/docs/claims">Function claims</a>
+      <a href="/docs/conflicts">Conflicts</a>
+      <a href="/docs/previews">Shared previews</a>
+    </div>
+    <div><h3>AI</h3>
+      <a href="/docs/your-ai">Your own AI</a>
+      <a href="/docs/team-agent">The team agent</a>
+      <a href="/docs/limits">AI limits</a>
+    </div>
+    <div><h3>Reference</h3>
+      <a href="/docs/security">Security and data</a>
+    </div>
+  </aside>
+  <main class="docs-main">
+    <article data-page="/docs" data-group="Get started" data-title="I Documentation">
+      <h1>I Documentation</h1>
+      <p class="lede">I is a code editor for teams working with AI. It shows everyone what people and agents are working on, and stops two agents from changing the same function at once.</p>
+      <div class="claim-sim" data-sim></div>
+      <h2>Where are you starting from?</h2>
+      <div class="paths" data-paths>
+        <div class="path-tabs" role="tablist" aria-label="Your situation">
+          <button role="tab" type="button" aria-selected="true" data-path="solo">Just me for now</button>
+          <button role="tab" type="button" aria-selected="false" data-path="team">My team shares a repo</button>
+          <button role="tab" type="button" aria-selected="false" data-path="agents">We run several agents</button>
+        </div>
+        <div class="path-panel" data-panel="solo">
+          <p>Use I as a normal editor, and turn on collaboration when someone joins you.</p>
+          <ol><li><a href="/docs/sign-in">Sign in</a></li><li><a href="/docs/solo-and-sync">Learn how solo and sync work</a></li><li><a href="/docs/your-ai">Set up your own AI</a></li></ol>
+        </div>
+        <div class="path-panel" data-panel="team" hidden>
+          <p>Get everyone into one session so you can see who is working on what.</p>
+          <ol><li><a href="/docs/quickstart">Follow the Quickstart</a></li><li><a href="/docs/sessions">Start a session and invite people</a></li><li><a href="/docs/previews">Share your running app</a></li></ol>
+        </div>
+        <div class="path-panel" data-panel="agents" hidden>
+          <p>Keep agents out of each other's way, and catch overlaps early.</p>
+          <ol><li><a href="/docs/claims">See how function claims work</a></li><li><a href="/docs/conflicts">Check the conflicts view</a></li><li><a href="/docs/team-agent">Add the team agent</a></li></ol>
+        </div>
+      </div>
+      <h2>What you can do with I</h2>
+      <div class="cards">
+        <a class="doc-card" href="/docs/claims"><h3>Keep agents apart</h3><p>Let each agent claim the function it's changing.</p></a>
+        <a class="doc-card" href="/docs/conflicts"><h3>Spot overlaps early</h3><p>See where work overlaps before anyone has to merge.</p></a>
+        <a class="doc-card" href="/docs/sessions"><h3>Work as a team</h3><p>Share a goal, a chat and a view of who is doing what.</p></a>
+        <a class="doc-card" href="/docs/previews"><h3>Share your running app</h3><p>Give teammates a private link to your localhost.</p></a>
+        <a class="doc-card" href="/docs/your-ai"><h3>Ask your own AI</h3><p>Bring your own setup, with your team's context.</p></a>
+        <a class="doc-card" href="/docs/team-agent"><h3>Add a team agent</h3><p>Have it follow the chat and record decisions.</p></a>
+      </div>
+    </article>
+
+    <article data-page="/docs/quickstart" data-group="Get started" data-title="Quickstart">
+      <h1>Quickstart</h1>
+      <p class="lede">Get your team into a shared session.</p>
+      <div class="checklist" data-checklist>
+        <p class="progress" data-progress role="status">0 of 6 done</p>
+        <div class="bar"><span data-bar></span></div>
+        <label><input type="checkbox" data-step="get"><span><strong>Get I.</strong> I is in private development, so <a href="/download">join the waitlist</a> for access.</span></label>
+        <label><input type="checkbox" data-step="signin"><span><strong>Sign in.</strong> Click <strong>Sign in</strong> in the app, then choose GitHub or Google in your browser.</span></label>
+        <label><input type="checkbox" data-step="sync"><span><strong>Turn on sync.</strong> Use the I-mode switch to turn collaboration on.</span></label>
+        <label><input type="checkbox" data-step="session"><span><strong>Create a session.</strong> Give it a name and a goal. You become its owner.</span></label>
+        <label><input type="checkbox" data-step="invite"><span><strong>Invite your team.</strong> Copy the invite link from the session menu and send it to them, then approve each person in the panel.</span></label>
+        <label><input type="checkbox" data-step="work"><span><strong>Start working.</strong> Your agents claim functions as they change them, and everyone can see who has what.</span></label>
+      </div>
+    </article>
+
+    <article data-page="/docs/sign-in" data-group="Get started" data-title="Sign in">
+      <h1>Sign in</h1>
+      <ol>
+        <li>Click <strong>Sign in</strong> in the app. Your browser opens the sign-in page.</li>
+        <li>Choose <strong>Continue with GitHub</strong> or <strong>Continue with Google</strong>.</li>
+        <li>Approve access. You'll go back to the app, signed in.</li>
+      </ol>
+      <p>Your account is matched by your verified email address, so GitHub and Google accounts with the same email reach the same I account.</p>
+    </article>
+
+    <article data-page="/docs/solo-and-sync" data-group="Get started" data-title="Solo and sync">
+      <h1>Solo and sync</h1>
+      <p>In solo mode, collaboration is off and I works as a normal editor. Turn on sync to work with your team in a shared session.</p>
+    </article>
+
+    <article data-page="/docs/sessions" data-group="Working together" data-title="Sessions and invites">
+      <h1>Sessions and invites</h1>
+      <p>A session is a shared workspace for one piece of team work. It has a goal, a chat, and a list of who is doing what.</p>
+      <h2>Start a session</h2>
+      <p>Create a session from the I panel and give it a name and goal. You become its owner.</p>
+      <h2>Invite your team</h2>
+      <p>Copy the invite link from the session menu, or invite someone by email. Anyone with the link can ask to join after signing in. You see their email address in the panel and choose <strong>Approve</strong> or <strong>Decline</strong>. They join as soon as you approve.</p>
+    </article>
+
+    <article data-page="/docs/claims" data-group="Working together" data-title="Function claims">
+      <h1>Function claims</h1>
+      <p>Before an agent changes a function, it claims that function. If another agent already holds the claim, the request is refused and the agent is told who holds it.</p>
+      <p>Claims apply to single functions, so several agents can work in the same file as long as they stay in different functions.</p>
+      <h2>Try it</h2>
+      <div class="claim-sim" data-sim></div>
+    </article>
+
+    <article data-page="/docs/conflicts" data-group="Working together" data-title="Conflicts">
+      <h1>Conflicts</h1>
+      <p>The conflicts view shows where people and agents overlap while the work is still in progress, so you can sort it out before anyone has to merge.</p>
+    </article>
+
+    <article data-page="/docs/previews" data-group="Working together" data-title="Shared previews">
+      <h1>Shared previews</h1>
+      <p>Share an app running on your localhost with everyone in your session.</p>
+      <ol>
+        <li>Start your app locally.</li>
+        <li>Open the session menu, choose to share your running app, and enter its port.</li>
+        <li>Teammates get a private link. The page reloads for them when you change a file.</li>
+      </ol>
+      <p>Sharing stops when you stop it or leave the session, and after 2 hours at most. Only open shared links from people you trust.</p>
+    </article>
+
+    <article data-page="/docs/your-ai" data-group="AI" data-title="Your own AI">
+      <h1>Your own AI</h1>
+      <p>Type <code>@agent</code> in the team chat to send a request to your own AI, using your own setup and API key. Your AI can also check what teammates are working on before it starts.</p>
+    </article>
+
+    <article data-page="/docs/team-agent" data-group="AI" data-title="The team agent">
+      <h1>The team agent</h1>
+      <p>When it's turned on for a session, the team agent follows the chat. It answers when it can help, flags ownership clashes, and records agreed decisions in the session's shared reference.</p>
+      <p>It runs on the server and uses the service's AI key. What your team writes in the chat is sent to the AI provider.</p>
+    </article>
+
+    <article data-page="/docs/limits" data-group="AI" data-title="AI limits">
+      <h1>AI limits</h1>
+      <p>Each session has a daily spending limit on the shared AI key, currently about $2. When a session reaches it, shared AI features pause until the next day (UTC). Your own AI keeps working.</p>
+    </article>
+
+    <article data-page="/docs/security" data-group="Reference" data-title="Security and data">
+      <h1>Security and data</h1>
+      <p class="lede">Before your team starts, know that a synced session's chat, plans and code are stored on our server.</p>
+      <ul>
+        <li><strong>Joining:</strong> people need a session's secret invite link and the owner's approval.</li>
+        <li><strong>Sign-in tokens:</strong> current versions of the app send tokens in request headers, not in web addresses.</li>
+        <li><strong>Your code and chat:</strong> when sync is on, session chat, plans and synced code are stored on our server so teammates can receive them. In solo mode, sync is off.</li>
+        <li><strong>AI providers:</strong> text sent to shared AI features, including team chat when the team agent is on, goes to the AI provider.</li>
+      </ul>
+    </article>
+  </main>
+</div>
+<script>
+(function () {
+  var articles = Array.prototype.slice.call(document.querySelectorAll("article[data-page]"));
+  var links = Array.prototype.slice.call(document.querySelectorAll(".docs-side a"));
+  var input = document.getElementById("docs-search");
+  var results = document.getElementById("docs-results");
+
+  function show(path) {
+    var clean = path.replace(/\/+$/, "") || "/docs";
+    var found = articles.some(function (a) { return a.dataset.page === clean; });
+    if (!found) clean = "/docs";
+    articles.forEach(function (a) {
+      a.hidden = a.dataset.page !== clean;
+      if (!a.hidden) document.title = a.dataset.title + " | I Docs";
+    });
+    links.forEach(function (l) {
+      if (l.getAttribute("href") === clean) l.setAttribute("aria-current", "page");
+      else l.removeAttribute("aria-current");
+    });
+    window.scrollTo(0, 0);
+  }
+
+  function go(path) {
+    history.pushState(null, "", path);
+    show(path);
+    results.hidden = true;
+    input.value = "";
+  }
+
+  document.addEventListener("click", function (event) {
+    var link = event.target.closest && event.target.closest("a[href^='/docs']");
+    if (!link || event.metaKey || event.ctrlKey) return;
+    event.preventDefault();
+    go(link.getAttribute("href"));
+  });
+  window.addEventListener("popstate", function () { show(location.pathname); });
+
+  input.addEventListener("input", function () {
+    var query = input.value.trim().toLowerCase();
+    results.textContent = "";
+    if (!query) { results.hidden = true; return; }
+    var hits = articles.filter(function (a) { return a.textContent.toLowerCase().indexOf(query) !== -1; });
+    hits.slice(0, 8).forEach(function (a) {
+      var link = document.createElement("a");
+      link.href = a.dataset.page;
+      link.textContent = a.dataset.title;
+      var group = document.createElement("span");
+      group.textContent = a.dataset.group;
+      link.appendChild(group);
+      results.appendChild(link);
+    });
+    if (!hits.length) {
+      var none = document.createElement("p");
+      none.textContent = "No pages match that search.";
+      results.appendChild(none);
+    }
+    results.hidden = false;
+  });
+  document.addEventListener("keydown", function (event) {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      input.focus();
+    } else if (event.key === "Escape") {
+      results.hidden = true;
+    }
+  });
+
+  // Previous and next links, in sidebar order.
+  articles.forEach(function (article, index) {
+    var pager = document.createElement("div");
+    pager.className = "pager";
+    [[articles[index - 1], "Previous"], [articles[index + 1], "Next"]].forEach(function (entry) {
+      if (!entry[0]) { pager.appendChild(document.createElement("span")); return; }
+      var link = document.createElement("a");
+      link.href = entry[0].dataset.page;
+      var label = document.createElement("small");
+      label.textContent = entry[1];
+      link.appendChild(label);
+      link.appendChild(document.createTextNode(entry[0].dataset.title));
+      pager.appendChild(link);
+    });
+    article.appendChild(pager);
+  });
+
+  // Situation chooser.
+  document.querySelectorAll("[data-paths]").forEach(function (paths) {
+    var tabs = paths.querySelectorAll("[data-path]");
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        tabs.forEach(function (other) { other.setAttribute("aria-selected", String(other === tab)); });
+        paths.querySelectorAll("[data-panel]").forEach(function (panel) {
+          panel.hidden = panel.dataset.panel !== tab.dataset.path;
+        });
+      });
+    });
+  });
+
+  // Quickstart progress, remembered in this browser only.
+  document.querySelectorAll("[data-checklist]").forEach(function (list) {
+    var boxes = Array.prototype.slice.call(list.querySelectorAll("input[data-step]"));
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem("i-quickstart") || "{}"); } catch (_) {}
+    function refresh() {
+      var done = boxes.filter(function (box) { return box.checked; }).length;
+      list.querySelector("[data-progress]").textContent = done === boxes.length ? "All done. Your team is set up." : done + " of " + boxes.length + " done";
+      list.querySelector("[data-bar]").style.width = (done / boxes.length * 100) + "%";
+    }
+    boxes.forEach(function (box) {
+      box.checked = !!saved[box.dataset.step];
+      box.addEventListener("change", function () {
+        saved[box.dataset.step] = box.checked;
+        try { localStorage.setItem("i-quickstart", JSON.stringify(saved)); } catch (_) {}
+        refresh();
+      });
+    });
+    refresh();
+  });
+
+  // The claims demo: a local simulation, nothing is sent anywhere.
+  var FUNCTIONS = ["complete_task", "add_task", "delete_task"];
+  var AGENTS = { alice: "Alice's agent", bob: "Bob's agent" };
+  document.querySelectorAll("[data-sim]").forEach(function (root) {
+    var state = { agent: "alice", mode: "function", held: {} };
+    state.held = { complete_task: "bob" };
+    var message = "You're Alice's agent. Bob's agent holds complete_task. Click a function to claim it.";
+    var tone = "";
+
+    function add(parent, tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text) node.textContent = text;
+      parent.appendChild(node);
+      return node;
+    }
+    function fileOwner() {
+      var names = Object.keys(state.held);
+      return names.length ? state.held[names[0]] : null;
+    }
+    function click(name) {
+      var me = AGENTS[state.agent];
+      var holder = state.held[name];
+      if (holder === state.agent) {
+        delete state.held[name];
+        message = me + " released " + name + ".";
+        tone = "";
+      } else if (holder) {
+        message = "Refused: " + AGENTS[holder] + " is working on " + name + ".";
+        tone = "refused";
+      } else if (state.mode === "file" && fileOwner() && fileOwner() !== state.agent) {
+        message = "Refused: " + AGENTS[fileOwner()] + " has locked the whole file, so " + name + " has to wait.";
+        tone = "refused";
+      } else {
+        state.held[name] = state.agent;
+        message = "Granted: " + me + " now holds " + name + ".";
+        tone = "granted";
+      }
+      render();
+    }
+    function render() {
+      root.textContent = "";
+      var bar = add(root, "div", "sim-bar");
+      add(bar, "span", "sim-label", "Act as");
+      Object.keys(AGENTS).forEach(function (id) {
+        var button = add(bar, "button", "sim-chip " + id, AGENTS[id]);
+        button.type = "button";
+        button.setAttribute("aria-pressed", String(state.agent === id));
+        button.addEventListener("click", function () {
+          state.agent = id;
+          message = "You're " + AGENTS[id] + ". Click a function to claim it.";
+          tone = "";
+          render();
+        });
+      });
+      var compare = add(bar, "label", "sim-toggle");
+      var toggle = add(compare, "input");
+      toggle.type = "checkbox";
+      toggle.checked = state.mode === "file";
+      add(compare, "span", "", "Compare with file locks");
+      toggle.addEventListener("change", function () {
+        state.mode = toggle.checked ? "file" : "function";
+        message = toggle.checked ? "File locks: one agent holds the whole file. Try claiming something." : "Function claims: agents only hold the function they're changing.";
+        tone = "";
+        render();
+      });
+      var file = add(root, "div", "sim-file");
+      add(file, "div", "tab", "tasks.py · example");
+      FUNCTIONS.forEach(function (name) {
+        var holder = state.held[name];
+        var locked = state.mode === "file" && !holder && fileOwner();
+        var row = add(file, "button", "sim-fn" + (holder ? " held-" + holder : "") + (locked ? " locked" : ""));
+        row.type = "button";
+        add(row, "code", "", "def " + name + "(…)");
+        add(row, "span", "sim-owner", holder ? AGENTS[holder] : locked ? "Locked by " + AGENTS[fileOwner()] : "Free");
+        row.addEventListener("click", function () { click(name); });
+      });
+      var status = add(root, "p", "sim-status " + tone, message);
+      status.setAttribute("role", "status");
+    }
+    render();
+  });
+
+  show(location.pathname);
+})();
+</script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 mod agent;
 mod auth;
 mod checkpoint;
+mod client_ip;
 mod crdt;
 mod db;
 mod email;
@@ -11,6 +12,7 @@ mod listen;
 mod models;
 mod oauth;
 mod preview;
+mod site;
 mod stats;
 mod symbols;
 mod team;
@@ -22,7 +24,6 @@ use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
-use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -42,6 +43,8 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub previews: preview::Previews,
     pub preview_routing: preview::Routing,
+    // Host that serves shared apps, kept apart from this server's own pages.
+    pub preview_host: Option<String>,
     // Set when the GitHub App's credentials are configured.
     pub github: Option<std::sync::Arc<github::GithubApp>>,
     pub listen_limits: listen::Limits,
@@ -58,6 +61,7 @@ pub(crate) fn test_state(pool: SqlitePool) -> AppState {
         http_client: reqwest::Client::new(),
         previews: preview::Previews::default(),
         preview_routing: preview::Routing::default(),
+        preview_host: None,
         github: None,
         listen_limits: listen::Limits::default(),
     }
@@ -94,6 +98,7 @@ async fn main() {
         http_client,
         previews: preview::Previews::default(),
         preview_routing: preview::Routing::default(),
+        preview_host: std::env::var("PREVIEW_HOST").ok().filter(|host| !host.trim().is_empty()),
         github: github::GithubApp::from_env(),
         listen_limits: listen::Limits::default(),
     };
@@ -112,7 +117,9 @@ async fn main() {
     tokio::spawn(checkpoint::run_checkpoint_sweep(state.clone()));
 
     // Token bucket: refills 1 req/600ms (~100/min sustained) per peer IP, burst up to 100.
+    let client_ip = client_ip::ClientIp::from_env();
     let global_governor_conf = GovernorConfigBuilder::default()
+        .key_extractor(client_ip)
         .period(Duration::from_millis(600))
         .burst_size(100)
         .finish()
@@ -120,6 +127,7 @@ async fn main() {
 
     // Token bucket: refills 1 req/6s (~10/min sustained) per peer IP, burst up to 10.
     let auth_governor_conf = GovernorConfigBuilder::default()
+        .key_extractor(client_ip)
         .period(Duration::from_millis(6000))
         .burst_size(10)
         .finish()
@@ -146,12 +154,14 @@ async fn main() {
         .route("/auth/{provider}", get(oauth::start))
         .route("/auth/{provider}/callback", get(oauth::callback))
         .route("/auth/exchange", post(oauth::exchange))
+        .route("/waitlist", post(site::join_waitlist))
         .layer(GovernorLayer::new(auth_governor_conf));
 
     let public_routes = Router::new()
         .route("/ws", get(ws::ws_handler))
         .route("/github/webhook", post(github::webhook))
-        .route("/join/{id}", get(github::join_page));
+        .route("/join/{id}", get(github::join_page))
+        .route("/auth/signin", get(site::signin));
 
     let protected_routes = Router::new()
         .route(
@@ -160,6 +170,7 @@ async fn main() {
         )
         .route("/sessions/{id}/join", post(handlers::join_session))
         .route("/sessions/{id}/invite", post(handlers::invite_to_session))
+        .route("/sessions/{id}/join-requests/{user_id}", put(handlers::answer_join_request))
         .route(
             "/contracts",
             post(handlers::create_contract).get(handlers::list_contracts),
@@ -186,7 +197,6 @@ async fn main() {
         .merge(auth_routes)
         .merge(public_routes)
         .merge(protected_routes)
-        .layer(CorsLayer::permissive())
         .layer(GovernorLayer::new(global_governor_conf))
         // Added after the layers so they're outside the per-IP rate limit:
         // one page load of a dev app makes dozens of asset requests.
@@ -195,6 +205,7 @@ async fn main() {
         .route("/preview/{token}/", any(preview::open))
         .route("/preview/{token}/{*rest}", any(preview::open))
         .fallback(preview::fallback)
+        .layer(middleware::from_fn_with_state(state.clone(), preview::separate_hosts))
         .with_state(state);
 
     // Railway assigns a dynamic port via $PORT and routes traffic to it, not to a

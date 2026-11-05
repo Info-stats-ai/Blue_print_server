@@ -59,11 +59,15 @@ ALICE_ID=$(echo "$ALICE" | json 'd["user_id"]')
 BOB_TOKEN=$(echo "$BOB" | json 'd["token"]')
 BOB_ID=$(echo "$BOB" | json 'd["user_id"]')
 
-SESSION=$(curl -s -X POST "$BASE/sessions" -H "authorization: Bearer $ALICE_TOKEN" \
+CREATED=$(curl -s -X POST "$BASE/sessions" -H "authorization: Bearer $ALICE_TOKEN" \
   -H 'content-type: application/json' \
-  -d '{"name":"Tiny Tasks","goal":"Fix task completion and add tests","has_leader":true}' \
-  | json 'd["session"]["id"]')
-curl -s -o /dev/null -X POST "$BASE/sessions/$SESSION/join" -H "authorization: Bearer $BOB_TOKEN"
+  -d '{"name":"Tiny Tasks","goal":"Fix task completion and add tests","has_leader":true}')
+SESSION=$(echo "$CREATED" | json 'd["session"]["id"]')
+INVITE=$(echo "$CREATED" | json 'd["invite_token"]')
+curl -s -o /dev/null -X POST "$BASE/sessions/$SESSION/join" -H "authorization: Bearer $BOB_TOKEN" \
+  -H 'content-type: application/json' -d "{\"invite\":\"$INVITE\"}"
+curl -s -o /dev/null -X PUT "$BASE/sessions/$SESSION/join-requests/$BOB_ID" -H "authorization: Bearer $ALICE_TOKEN" \
+  -H 'content-type: application/json' -d '{"approve":true}'
 echo "$SESSION" >"$STATE/session_id"
 
 # Each person's window is its own .app wrapping the dev binary (a hard link, no
@@ -116,7 +120,7 @@ JSON
     --env BLUEPRINT_HTTP_URL="$BASE" --env BLUEPRINT_SERVER_URL="ws://127.0.0.1:$PORT/ws" \
     --env BLUEPRINT_DEV_TOKEN="$token" --env BLUEPRINT_DEV_USER_ID="$user_id" \
     --stdout "$home/ide.log" --stderr "$home/ide.log" \
-    --args --user-data-dir "$home/data" "$home/tiny-tasks" "i-ide://i-mode/join/$SESSION"
+    --args --user-data-dir "$home/data" "$home/tiny-tasks" "i-ide://i-mode/join/$SESSION.$INVITE"
   # `open` returns before the app's pid is known; find it by its data dir.
   for _ in $(seq 1 40); do
     pid=$(pgrep -f -- "--user-data-dir $home/data" | head -1 || true)

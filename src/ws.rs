@@ -275,6 +275,81 @@ pub struct Hub {
     // Where collision-prevention events go to be counted for the weekly
     // dashboard (see `stats.rs`). Unset in tests.
     event_sink: Arc<std::sync::OnceLock<crate::stats::EventSink>>,
+    pub ai_budget: AiBudget,
+}
+
+/// Caps what one session can spend of the server's shared AI key per day.
+/// Estimated from token counts and kept in memory, so a restart resets it;
+/// it's a brake on runaway use, not billing.
+#[derive(Clone, Default)]
+pub struct AiBudget {
+    spent: Arc<std::sync::Mutex<HashMap<String, (String, f64)>>>,
+}
+
+impl AiBudget {
+    fn cap_usd() -> f64 {
+        std::env::var("SESSION_DAILY_AI_CAP_USD")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(2.0)
+    }
+
+    fn today() -> String {
+        chrono::Utc::now().format("%Y-%m-%d").to_string()
+    }
+
+    pub fn record(&self, session_id: &str, cost_usd: f64) {
+        self.record_on(session_id, cost_usd, &Self::today());
+    }
+
+    fn record_on(&self, session_id: &str, cost_usd: f64, day: &str) {
+        if let Ok(mut spent) = self.spent.lock() {
+            let entry = spent.entry(session_id.to_string()).or_insert_with(|| (day.to_string(), 0.0));
+            if entry.0 != day {
+                *entry = (day.to_string(), 0.0);
+            }
+            entry.1 += cost_usd;
+        }
+    }
+
+    pub fn has_room(&self, session_id: &str) -> bool {
+        self.has_room_on(session_id, &Self::today(), Self::cap_usd())
+    }
+
+    fn has_room_on(&self, session_id: &str, day: &str, cap: f64) -> bool {
+        let Ok(spent) = self.spent.lock() else {
+            return false;
+        };
+        match spent.get(session_id) {
+            Some((spent_day, amount)) if spent_day == day => *amount < cap,
+            _ => true,
+        }
+    }
+}
+
+async fn owner_id_for_requests(state: &AppState, session_id: &str) -> Option<String> {
+    sqlx::query_scalar("SELECT owner_id FROM sessions WHERE id = ?")
+        .bind(session_id)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None)
+}
+
+#[cfg(test)]
+mod ai_budget_tests {
+    use super::*;
+
+    #[test]
+    fn a_session_stops_at_its_cap_and_resets_the_next_day() {
+        let budget = AiBudget::default();
+        assert!(budget.has_room_on("s1", "d1", 1.0));
+        budget.record_on("s1", 0.6, "d1");
+        assert!(budget.has_room_on("s1", "d1", 1.0));
+        budget.record_on("s1", 0.6, "d1");
+        assert!(!budget.has_room_on("s1", "d1", 1.0));
+        assert!(budget.has_room_on("s2", "d1", 1.0), "sessions are separate");
+        assert!(budget.has_room_on("s1", "d2", 1.0), "a new day starts fresh");
+    }
 }
 
 /// Live counters behind Phase 6's "conflicts avoided" metric overlay —
@@ -810,6 +885,7 @@ impl Hub {
 
     /// Records one LLM call's estimated cost.
     pub async fn record_llm_call(&self, session_id: &str, cost_usd: f64) {
+        self.ai_budget.record(session_id, cost_usd);
         self.update_metrics(session_id, |metrics| {
             metrics.llm_calls += 1;
             metrics.estimated_cost_usd += cost_usd;
@@ -1344,15 +1420,26 @@ impl Hub {
 #[derive(Debug, Deserialize)]
 pub struct WsQuery {
     pub session_id: String,
-    pub token: String,
+    // Only for clients from before the Authorization header; a URL ends up in
+    // proxy and server logs.
+    #[serde(default)]
+    pub token: Option<String>,
 }
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Query(params): Query<WsQuery>,
+    headers: axum::http::HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Response, AppError> {
-    let claims = decode_jwt(&params.token, &state.jwt_secret)?;
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::to_string)
+        .or(params.token.clone())
+        .ok_or_else(|| AppError::Unauthorized("missing token".into()))?;
+    let claims = decode_jwt(&token, &state.jwt_secret)?;
     let user_id = claims.sub;
 
     let membership: Option<(String,)> =
@@ -1473,10 +1560,23 @@ async fn handle_socket(
         .flatten();
 
     let agent_listens = crate::listen::is_on(&state.pool, &session_id).await;
+    let invite_token: Option<String> = sqlx::query_scalar("SELECT invite_token FROM sessions WHERE id = ?")
+        .bind(&session_id)
+        .fetch_optional(&state.pool)
+        .await
+        .unwrap_or(None)
+        .flatten();
 
+    let join_requests = if owner_id_for_requests(&state, &session_id).await.as_deref() == Some(user_id.as_str()) {
+        crate::handlers::pending_join_requests(&state.pool, &session_id).await
+    } else {
+        Vec::new()
+    };
     let snapshot = json!({
+        "join_requests": join_requests,
         "github_repo": github_repo,
         "agent_listens": agent_listens,
+        "invite_token": invite_token,
         "type": "snapshot",
         "contracts": contracts,
         "intents": intents,

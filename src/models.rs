@@ -132,6 +132,32 @@ fn default_true() -> bool {
 #[derive(Debug, Serialize)]
 pub struct SessionResponse {
     pub session: Session,
+    // The secret a new member needs to join; see `invite_code`.
+    pub invite_token: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct JoinResponse {
+    pub ok: bool,
+    // The invite was good; the session owner still has to let them in.
+    pub pending: bool,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct JoinRequestInfo {
+    pub user_id: String,
+    pub email: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AnswerJoinRequest {
+    pub approve: bool,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct JoinSessionRequest {
+    #[serde(default)]
+    pub invite: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

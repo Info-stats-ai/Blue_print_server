@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download I</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap">
+<style>{{CSS}}</style>
+</head>
+<body>
+<div class="wrap">
+  {{NAV}}
+  <main class="stack" style="padding-block:40px 72px;max-width:44em">
+    <h1>Download I</h1>
+    <p class="lede">I isn't publicly available yet. Join the waitlist and we'll email you when a build is ready for your team.</p>
+    <div class="platforms">
+      <div class="platform"><b>macOS</b><span class="muted">Coming first</span></div>
+      <div class="platform"><b>Linux</b><span class="muted">Planned</span></div>
+      <div class="platform"><b>Windows</b><span class="muted">Planned</span></div>
+    </div>
+    <form id="waitlist">
+      <label for="waitlist-email">Work email</label>
+      <div class="row">
+        <input id="waitlist-email" type="email" autocomplete="email" required placeholder="you@company.com">
+        <button class="button" type="submit">Join the waitlist</button>
+      </div>
+      <p class="note" id="waitlist-note" role="status">We'll only use this to contact you about early access.</p>
+    </form>
+  </main>
+  <footer>I is in private development.</footer>
+</div>
+<script>
+document.getElementById("waitlist").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  var note = document.getElementById("waitlist-note");
+  note.classList.remove("error");
+  try {
+    var response = await fetch("/waitlist", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: document.getElementById("waitlist-email").value })
+    });
+    if (!response.ok) throw new Error();
+    note.textContent = "You're on the list. We'll email you when a build is ready.";
+    event.target.reset();
+  } catch (_) {
+    note.classList.add("error");
+    note.textContent = "That didn't go through. Check the address and try again.";
+  }
+});
+</script>
+</body>
+</html>

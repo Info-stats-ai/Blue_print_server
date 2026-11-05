@@ -12,6 +12,7 @@ use crate::ws;
 // override it via AGENT_MODEL.
 const FALLBACK_AGENT_MODEL: &str = "claude-haiku-5-5";
 
+const BUDGET_REACHED: &str = "This session has reached today's limit on the shared AI key. Your own AI (My AI) still works.";
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 // Generating a whole task plan can take far longer than the shared HTTP
@@ -147,6 +148,10 @@ pub(crate) fn model_or_fallback() -> String {
 /// AGENT_USER_ID. Runs as its own tokio task so it never blocks a socket's
 /// receive loop; any failure is reported into the chat instead of panicking.
 pub async fn handle_mention(state: AppState, session_id: String) {
+    if !state.hub.ai_budget.has_room(&session_id) {
+        broadcast_agent_reply(&state, &session_id, BUDGET_REACHED.to_string()).await;
+        return;
+    }
     let history = state
         .hub
         .recent_chat_history(&session_id, HISTORY_WINDOW)
@@ -215,6 +220,10 @@ pub async fn run_blueprint_job(state: AppState, session_id: String) {
 /// blueprint, broadcasts the update, and posts a short confirmation to chat.
 /// One LLM call; any failure is reported into chat instead of panicking.
 pub async fn handle_blueprint_request(state: AppState, session_id: String) {
+    if !state.hub.ai_budget.has_room(&session_id) {
+        broadcast_agent_reply(&state, &session_id, BUDGET_REACHED.to_string()).await;
+        return;
+    }
     let history = state
         .hub
         .recent_chat_history(&session_id, BLUEPRINT_HISTORY_WINDOW)
@@ -316,6 +325,10 @@ pub async fn run_triage_job(state: AppState, session_id: String) {
 /// surfacing what needs a human's judgment, not replacing that judgment.
 /// One LLM call; any failure is reported into chat instead of panicking.
 pub async fn handle_triage_request(state: AppState, session_id: String) {
+    if !state.hub.ai_budget.has_room(&session_id) {
+        broadcast_agent_reply(&state, &session_id, BUDGET_REACHED.to_string()).await;
+        return;
+    }
     let all_files = state.hub.get_all_files(&session_id).await;
     if all_files.is_empty() {
         broadcast_agent_reply(
@@ -716,6 +729,9 @@ pub async fn check_file_save(
     blueprint: String,
     matched_symbols: Vec<String>,
 ) {
+    if !state.hub.ai_budget.has_room(&session_id) {
+        return;
+    }
     let model = model_or_fallback();
     println!("agent: watcher checking {path} in session {session_id} using model {model}");
 
