@@ -1,0 +1,37 @@
+<article data-page="/docs/live-editing" data-group="Work with your team" data-title="Live editing and syncing">
+<h1>Live editing and syncing</h1>
+<p class="lede">When people work on the same file in a session, their edits appear for each other as they type. This page explains how files get shared.</p>
+<h2>Edit a file together</h2>
+<ol>
+  <li>Open a file while you're in a session. It starts syncing, and it appears under <strong>Syncing</strong> in the <strong>Team</strong> tab.</li>
+  <li>Your teammate opens the same file.</li>
+  <li>Type as usual. Edits from both of you merge as you go, and you can undo your own changes with <kbd>Cmd</kbd>+<kbd>Z</kbd>.</li>
+</ol>
+<p>People are never blocked from typing. <a href="/docs/claims">Claims</a> only coordinate agents.</p>
+<h2>See who is where</h2>
+<p>Open the <strong>Team</strong> tab. <strong>Collaborators</strong> lists who is present, which file each person has open and what their agent is doing.</p>
+<h2>Sync one file</h2>
+<ul>
+  <li>Open the file and select the circle button in the tool row.</li>
+  <li>Or find the file under <strong>Syncing</strong> in the <strong>Team</strong> tab and select <strong>Sync</strong>.</li>
+</ul>
+<h2>Share files teammates don't have</h2>
+<ol>
+  <li>Select the people icon, then <strong>Share files…</strong>.</li>
+  <li>Enter a folder, or leave it blank for the whole project.</li>
+  <li>Select <strong>Share</strong>.</li>
+</ol>
+<p>Files listed in <code>.gitignore</code> are skipped. In a <strong>You lead</strong> session, only the leader can do this.</p>
+<h2>Sync your agent's work</h2>
+<p>When an agent changes files, a banner offers <strong>Sync to team</strong>. Select it to send those changes to your teammates.</p>
+<h2>Files that are never synced</h2>
+<p>To protect your secrets, agents and teammates can't read or write files that usually hold credentials:</p>
+<ul>
+  <li><code>.env</code> and <code>.env.*</code> files</li>
+  <li><code>.ssh</code>, <code>.aws</code> and <code>.gnupg</code> folders</li>
+  <li><code>.npmrc</code>, <code>.pypirc</code> and <code>.netrc</code></li>
+  <li>Files starting with <code>id_rsa</code>, <code>id_ed25519</code> or <code>credentials</code></li>
+  <li>Files ending in <code>.pem</code>, <code>.key</code>, <code>.p12</code>, <code>.pfx</code> or <code>.keystore</code></li>
+</ul>
+<div class="callout important"><strong>Important</strong><p>This list catches common names, not every secret. A key inside an ordinary source file can still be synced, so keep secrets out of your code.</p></div>
+</article>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>I Docs</title>
+<title>{{TITLE}} | I Docs</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
 <style>{{CSS}}</style>
 </head>
@@ -24,27 +24,41 @@
 <div class="docs-shell">
   <aside class="docs-side" aria-label="Documentation">
     <a class="side-home" href="/docs">Overview</a>
-    <details open><summary>Get started</summary>
-      <a href="/docs/quickstart">Quickstart</a>
+    <details><summary>Get started</summary>
+      <a href="/docs/getting-started">Getting started</a>
+      <a href="/docs/installation">Installation</a>
+      <a href="/docs/interface">The I interface</a>
       <a href="/docs/tutorial">Tutorial: your first team session</a>
-      <a href="/docs/sign-in">Sign in</a>
-      <a href="/docs/solo-and-sync">Solo and I-mode</a>
     </details>
-    <details><summary>Work together</summary>
-      <a href="/docs/sessions">Sessions and invites</a>
+    <details><summary>Use the editor</summary>
+      <a href="/docs/editing">Editing code</a>
+      <a href="/docs/navigation">Finding and navigating</a>
+      <a href="/docs/terminal-tasks">Terminal, tasks and debugging</a>
+      <a href="/docs/git">Git</a>
+      <a href="/docs/settings">Settings and key bindings</a>
+    </details>
+    <details><summary>Work with your team</summary>
+      <a href="/docs/i-mode">What I-mode does</a>
+      <a href="/docs/sign-in">Sign in</a>
+      <a href="/docs/sessions">Sessions</a>
+      <a href="/docs/invites">Invites and approvals</a>
       <a href="/docs/chat">Team chat</a>
+      <a href="/docs/live-editing">Live editing and syncing</a>
       <a href="/docs/tasks">Task board</a>
-      <a href="/docs/sync">Syncing files</a>
+      <a href="/docs/team-tab">The Team tab</a>
       <a href="/docs/previews">Shared previews</a>
     </details>
     <details><summary>Work with AI</summary>
-      <a href="/docs/your-ai">Your own AI</a>
+      <a href="/docs/ai-setup">Set up your AI</a>
+      <a href="/docs/your-ai">Your AI in the I panel</a>
+      <a href="/docs/agent-panel">The Agent Panel</a>
       <a href="/docs/claims">Function claims</a>
-      <a href="/docs/conflicts">Conflicts caught</a>
       <a href="/docs/team-agent">The team agent</a>
       <a href="/docs/reference-doc">Shared reference</a>
+      <a href="/docs/triage">Triage</a>
     </details>
-    <details><summary>Reference and help</summary>
+    <details><summary>Reference</summary>
+      <a href="/docs/settings-reference">Settings reference</a>
       <a href="/docs/controls">Controls and commands</a>
       <a href="/docs/limits">AI limits</a>
       <a href="/docs/security">Security and data</a>
@@ -53,382 +67,107 @@
     </details>
   </aside>
   <main class="docs-main">
-    <article data-page="/docs" data-group="Overview" data-title="I documentation">
-      <h1>I documentation</h1>
-      <div class="feature-card">
-        <div class="feature-copy">
-          <h2 class="plain">Run a team of people and agents</h2>
-          <p>See what everyone is working on, split the work, and stop agents from changing the same function at once. Try it here: you're an agent, and Bob's agent is already at work.</p>
-          <a href="/docs/tutorial">Start the tutorial →</a>
-        </div>
-        <div class="claim-sim" data-sim></div>
-      </div>
-      <h2>What do you want to do?</h2>
-      <div class="cards">
-        <a class="doc-card" href="/docs/quickstart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg><h3>Get set up</h3><p>Sign in, create a session and invite your team.</p></a>
-        <a class="doc-card" href="/docs/sessions"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="8" r="3.5"/><circle cx="17" cy="10" r="2.5"/><path d="M2 20c0-4 3-6 6-6s6 2 6 6M16 15c3 0 5 2 5 5"/></svg><h3>Work with your team</h3><p>Share a goal and a chat, and see who is doing what.</p></a>
-        <a class="doc-card" href="/docs/tasks"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg><h3>Split up the work</h3><p>Turn your plan into tasks with one owner each.</p></a>
-        <a class="doc-card" href="/docs/claims"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4L3 12l5 8M16 4l5 8-5 8"/></svg><h3>Keep agents apart</h3><p>See how agents avoid each other's functions.</p></a>
-        <a class="doc-card" href="/docs/your-ai"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></svg><h3>Use your own AI</h3><p>Ask, plan or build, with your team's context.</p></a>
-        <a class="doc-card" href="/docs/previews"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg><h3>Show your running app</h3><p>Give teammates a private link to your localhost.</p></a>
-      </div>
-      <h2>Find your starting point</h2>
-      <div class="paths" data-paths>
-        <div class="path-tabs" role="tablist" aria-label="Your situation">
-          <button role="tab" type="button" aria-selected="true" data-path="solo">Just me for now</button>
-          <button role="tab" type="button" aria-selected="false" data-path="team">My team shares a repo</button>
-          <button role="tab" type="button" aria-selected="false" data-path="agents">We run several agents</button>
-        </div>
-        <div class="path-panel" data-panel="solo">
-          <p>Use I as a normal editor with an AI beside you, and turn on I-mode when someone joins.</p>
-          <ol><li><a href="/docs/solo-and-sync">Learn how solo mode works</a></li><li><a href="/docs/your-ai">Set up your own AI</a></li><li><a href="/docs/sign-in">Sign in when you're ready to collaborate</a></li></ol>
-        </div>
-        <div class="path-panel" data-panel="team" hidden>
-          <p>Get everyone into one session so you can see who is working on what.</p>
-          <ol><li><a href="/docs/tutorial">Follow the tutorial</a></li><li><a href="/docs/sessions">Invite and approve people</a></li><li><a href="/docs/previews">Share your running app</a></li></ol>
-        </div>
-        <div class="path-panel" data-panel="agents" hidden>
-          <p>Split the work up front, then let claims catch what's left.</p>
-          <ol><li><a href="/docs/tasks">Assign tasks</a></li><li><a href="/docs/claims">See how function claims work</a></li><li><a href="/docs/team-agent">Add the team agent</a></li></ol>
-        </div>
-      </div>
-    </article>
-
-    <article data-page="/docs/quickstart" data-group="Get started" data-title="Quickstart">
-      <h1>Quickstart</h1>
-      <p class="lede">Get your team into a shared session. Tick off each step as you go.</p>
-      <div class="checklist" data-checklist>
-        <p class="progress" data-progress role="status">0 of 6 done</p>
-        <div class="bar"><span data-bar></span></div>
-        <label><input type="checkbox" data-step="get"><span><strong>Get I.</strong> I is in private development, so <a href="/download">join the waitlist</a> for access.</span></label>
-        <label><input type="checkbox" data-step="signin"><span><strong>Sign in.</strong> Click <strong>Sign in</strong> in the I panel, then choose GitHub or Google in your browser.</span></label>
-        <label><input type="checkbox" data-step="sync"><span><strong>Turn on I-mode.</strong> Use the switch at the top of the panel.</span></label>
-        <label><input type="checkbox" data-step="session"><span><strong>Create a session.</strong> Choose <strong>New session…</strong> from the sessions menu and give it a goal.</span></label>
-        <label><input type="checkbox" data-step="invite"><span><strong>Invite your team.</strong> Choose <strong>Copy invite link</strong>, send it, then approve each person in the panel.</span></label>
-        <label><input type="checkbox" data-step="work"><span><strong>Start working.</strong> Your agents claim functions as they change them, and everyone can see who has what.</span></label>
-      </div>
-      <h2>Next steps</h2>
-      <ul><li><a href="/docs/tutorial">Walk through a full session in the tutorial</a></li><li><a href="/docs/security">Read what's stored on our server before you sync code</a></li></ul>
-    </article>
-
-    <article data-page="/docs/tutorial" data-group="Get started" data-title="Tutorial: your first team session">
-      <h1>Tutorial: your first team session</h1>
-      <p class="lede">In this tutorial, you create a session, bring in a teammate, split up the work, and let your agents build without colliding.</p>
-      <h2>Prerequisites</h2>
-      <ul>
-        <li>I installed on your computer and your teammate's</li>
-        <li>A GitHub or Google account for each of you</li>
-        <li>A project you can both open</li>
-        <li>An API key for the AI you want to use</li>
-      </ul>
-      <h2>1. Create the session</h2>
-      <ol>
-        <li>Open your project in I, then open the I panel.</li>
-        <li>Click <strong>Sign in</strong>, choose an account in your browser, and return to the app.</li>
-        <li>Turn on the <strong>I-mode</strong> switch.</li>
-        <li>Open the sessions menu and choose <strong>New session…</strong>.</li>
-        <li>Enter a name and a goal, such as "Add task reminders".</li>
-        <li>Choose <strong>You lead</strong> so you can assign the work, or <strong>No leader</strong> to work as equals.</li>
-      </ol>
-      <div class="callout important"><strong>Important</strong><p>While I-mode is on, session chat, plans and synced code are stored on our server. Read <a href="/docs/security">Security and data</a> before syncing private code.</p></div>
-      <h2>2. Invite your teammate</h2>
-      <ol>
-        <li>In the sessions menu, choose <strong>Copy invite link</strong>, then send the link to your teammate.</li>
-        <li>Your teammate opens the link and signs in. Their app waits for your answer.</li>
-        <li>In your panel, check the email address on the request and click <strong>Approve</strong>.</li>
-      </ol>
-      <div class="callout tip"><strong>Tip</strong><p>Don't recognize the email address? Click <strong>Decline</strong>. A declined account can't ask again with that link.</p></div>
-      <h2>3. Split up the work</h2>
-      <ol>
-        <li>In the <strong>Chat</strong> tab, with <strong>Send to</strong> set to <strong>Team</strong>, talk through what you're building and who is good at what.</li>
-        <li>Open the <strong>Tasks</strong> tab and click <strong>Assign tasks</strong>. Each task gets one owner, with files kept apart where possible.</li>
-      </ol>
-      <h2>4. Build with your agents</h2>
-      <ol>
-        <li>Set <strong>Send to</strong> to <strong>My AI</strong> and choose <strong>Agent</strong> mode.</li>
-        <li>Ask your AI to start on your task. Your teammate does the same.</li>
-        <li>If both agents reach for the same function, the second steps back and the chat shows a <strong>Collision avoided</strong> message.</li>
-      </ol>
-      <h2>5. Review the session</h2>
-      <p>Open the <strong>Team</strong> tab to see collaborators, agents at work, what changed this session and how many conflicts were caught.</p>
-      <h2>Next steps</h2>
-      <ul><li><a href="/docs/previews">Show teammates your running app</a></li><li><a href="/docs/team-agent">Turn on the team agent</a></li><li><a href="/docs/reference-doc">Write a shared reference</a></li></ul>
-    </article>
-
-    <article data-page="/docs/sign-in" data-group="Get started" data-title="Sign in">
-      <h1>Sign in</h1>
-      <ol>
-        <li>Click <strong>Sign in</strong> in the I panel. Your browser opens the sign-in page.</li>
-        <li>Choose <strong>Continue with GitHub</strong> or <strong>Continue with Google</strong>.</li>
-        <li>Approve access. You'll go back to the app, signed in.</li>
-      </ol>
-      <p>Your account is matched by your verified email address, so GitHub and Google accounts with the same email reach the same I account.</p>
-      <p>To sign out, choose <strong>Log out</strong> from the sessions menu.</p>
-    </article>
-
-    <article data-page="/docs/solo-and-sync" data-group="Get started" data-title="Solo and I-mode">
-      <h1>Solo and I-mode</h1>
-      <h2>Solo mode</h2>
-      <p>The AI in the panel works on your project with you. It can read your files, create and edit them, and run commands. Nothing is shared with a team.</p>
-      <h2>I-mode</h2>
-      <p>Turn on the <strong>I-mode</strong> switch to sign in and work in shared sessions. You can turn it off to go back to working alone.</p>
-    </article>
-
-    <article data-page="/docs/sessions" data-group="Work together" data-title="Sessions and invites">
-      <h1>Sessions and invites</h1>
-      <p>A session is a shared workspace for one piece of team work. It has a goal, a chat, a task board, and a view of who is doing what.</p>
-      <h2>Create a session</h2>
-      <p>Choose <strong>New session…</strong> from the sessions menu. You become its owner. Choose <strong>You lead</strong> or <strong>No leader</strong>; only a leader can assign tasks in a led session.</p>
-      <h2>Invite people</h2>
-      <p>Choose <strong>Copy invite link</strong> or <strong>Invite by email…</strong> from the sessions menu.</p>
-      <h2>Approve or decline</h2>
-      <p>An invite link only lets someone ask to join. The owner sees their email address in the panel and clicks <strong>Approve</strong> or <strong>Decline</strong>.</p>
-      <div class="callout tip"><strong>Tip</strong><p>The owner sees waiting requests whenever they're connected, so a request isn't lost if the owner is away. The person joining keeps waiting for up to 10 minutes, and can open the link again after that.</p></div>
-      <h2>Join a session</h2>
-      <p>Open the invite link, or choose <strong>Join session…</strong> and paste it. You join as soon as the owner approves.</p>
-      <h2>Leave a session</h2>
-      <p>Choose <strong>Leave session</strong> from the sessions menu.</p>
-    </article>
-
-    <article data-page="/docs/chat" data-group="Work together" data-title="Team chat">
-      <h1>Team chat</h1>
-      <p>Use <strong>Send to</strong> under the message box to choose who reads your message.</p>
-      <table><thead><tr><th>Send to</th><th>Who it reaches</th></tr></thead><tbody>
-        <tr><td><strong>Team</strong></td><td>Everyone in the session.</td></tr>
-        <tr><td><strong>My AI</strong></td><td>Your own AI, working for you.</td></tr>
-      </tbody></table>
-      <p>While sending to <strong>Team</strong>, start a message with <code>@ai</code> to ask your AI from the team chat.</p>
-      <p>You can also attach files and use voice input from the row under the message box.</p>
-    </article>
-
-    <article data-page="/docs/tasks" data-group="Work together" data-title="Task board">
-      <h1>Task board</h1>
-      <p>The <strong>Tasks</strong> tab turns your discussion into work with clear owners.</p>
-      <ol>
-        <li>Talk through the plan in <strong>Chat</strong>: what you're building and who is good at what.</li>
-        <li>In the <strong>Tasks</strong> tab, click <strong>Assign tasks</strong>.</li>
-      </ol>
-      <p>The work is split by role, with one owner per task and files kept apart so agents don't collide. In a led session, only the leader can assign tasks.</p>
-    </article>
-
-    <article data-page="/docs/sync" data-group="Work together" data-title="Syncing files">
-      <h1>Syncing files</h1>
-      <p>Open files start syncing as you work in a session. Use these controls to send more:</p>
-      <ul>
-        <li><strong>Sync active file:</strong> the button under the message box syncs the file you have open.</li>
-        <li><strong>Share files:</strong> sends files teammates don't have yet. Leave the folder blank for the whole project, or name a folder.</li>
-        <li><strong>Sync to team:</strong> sends the changes your agent made to your teammates.</li>
-      </ul>
-      <div class="callout important"><strong>Important</strong><p>Synced code is stored on our server. See <a href="/docs/security">Security and data</a>.</p></div>
-    </article>
-
-    <article data-page="/docs/previews" data-group="Work together" data-title="Shared previews">
-      <h1>Shared previews</h1>
-      <p>Share an app running on your localhost with everyone in your session.</p>
-      <ol>
-        <li>Start your app locally.</li>
-        <li>Choose <strong>Share running app…</strong> from the sessions menu and enter its port.</li>
-        <li>Teammates see your app in the panel and click <strong>Open</strong>. Their page reloads when you change a file.</li>
-      </ol>
-      <p>To end it, choose <strong>Stop sharing app</strong>. Sharing also stops when you leave the session, and after 2 hours at most.</p>
-      <div class="callout important"><strong>Important</strong><p>A shared app runs code from your teammate's computer in your browser. Only open previews from people you trust.</p></div>
-    </article>
-
-    <article data-page="/docs/your-ai" data-group="Work with AI" data-title="Your own AI">
-      <h1>Your own AI</h1>
-      <p>Your AI uses your setup and API key, and can check what teammates are working on before it starts. Set <strong>Send to</strong> to <strong>My AI</strong>, then pick a mode:</p>
-      <table><thead><tr><th>Mode</th><th>Use it to</th></tr></thead><tbody>
-        <tr><td><strong>Ask</strong></td><td>Get answers about your code.</td></tr>
-        <tr><td><strong>Plan</strong></td><td>Work out an approach before changing anything.</td></tr>
-        <tr><td><strong>Agent</strong></td><td>Have it create and edit files and run commands.</td></tr>
-      </tbody></table>
-      <p>In Agent mode, it asks before running commands, and you can choose to allow or deny each one. Click <strong>Stop</strong> to halt it at any time.</p>
-      <div class="callout tip"><strong>Tip</strong><p>Your AI treats teammates' messages and files as information, not as instructions to follow.</p></div>
-    </article>
-
-    <article data-page="/docs/claims" data-group="Work with AI" data-title="Function claims">
-      <h1>Function claims</h1>
-      <p>Before an agent changes a function, it claims that function. If another agent already holds it, the agent steps back and the chat shows a <strong>Collision avoided</strong> message naming who has it.</p>
-      <p>Claims apply to single functions, so several agents can work in the same file as long as they stay in different functions.</p>
-      <h2>Try it</h2>
-      <div class="claim-sim" data-sim></div>
-      <h2>Why not lock files?</h2>
-      <p>A file lock lets only one agent work in a file at a time, so a team is capped at one agent per file. Turn on <strong>Compare with file locks</strong> above to see the difference.</p>
-    </article>
-
-    <article data-page="/docs/conflicts" data-group="Work with AI" data-title="Conflicts caught">
-      <h1>Conflicts caught</h1>
-      <p>The <strong>Team</strong> tab shows how many conflicts I caught before they landed, including agent collisions, for this session and for the past week.</p>
-      <p>Choose <strong>Copy summary</strong> to share the week's numbers. These counts come from your own sessions.</p>
-      <p>To go through overlaps with the team, click <strong>Run triage</strong> under the message box. Only the owner can run it.</p>
-    </article>
-
-    <article data-page="/docs/team-agent" data-group="Work with AI" data-title="The team agent">
-      <h1>The team agent</h1>
-      <p>The owner can turn this on for a session from the sessions menu. It follows the team chat and speaks up when it can help: a question it can answer, a contradiction or a blocker. Otherwise it stays quiet.</p>
-      <p>When the team clearly agrees on a plan, it can write that into the <a href="/docs/reference-doc">shared reference</a>.</p>
-      <div class="callout important"><strong>Important</strong><p>While it's on, team chat is sent to the AI provider, using the service's shared AI key. <a href="/docs/limits">AI limits</a> apply.</p></div>
-    </article>
-
-    <article data-page="/docs/reference-doc" data-group="Work with AI" data-title="Shared reference">
-      <h1>Shared reference</h1>
-      <p>The reference is a document your whole team and their agents can rely on. It's saved as a file everyone gets.</p>
-      <p>Press the book button under the chat to have the AI write it from your discussion and code, or type <code>@agent blueprint</code> in the team chat. In a led session, plans can wait for the leader to <strong>Approve</strong> or <strong>Dismiss</strong> them.</p>
-    </article>
-
-    <article data-page="/docs/controls" data-group="Reference and help" data-title="Controls and commands">
-      <h1>Controls and commands</h1>
-      <h2>Sessions menu</h2>
-      <table><thead><tr><th>Item</th><th>What it does</th></tr></thead><tbody>
-        <tr><td>New session…</td><td>Creates a session you own.</td></tr>
-        <tr><td>Join session…</td><td>Asks to join using an invite link.</td></tr>
-        <tr><td>Copy invite link</td><td>Copies the link that lets someone ask to join.</td></tr>
-        <tr><td>Invite by email…</td><td>Emails someone the invite.</td></tr>
-        <tr><td>Share running app…</td><td>Shares an app on your localhost.</td></tr>
-        <tr><td>Leave session</td><td>Disconnects you from the session.</td></tr>
-        <tr><td>Log out</td><td>Signs you out of I.</td></tr>
-      </tbody></table>
-      <h2>Team chat commands</h2>
-      <table><thead><tr><th>Type this</th><th>What happens</th></tr></thead><tbody>
-        <tr><td><code>@ai</code></td><td>Asks your own AI.</td></tr>
-        <tr><td><code>@agent blueprint</code></td><td>Writes or replaces the shared reference.</td></tr>
-        <tr><td><code>@agent triage</code></td><td>Runs triage. The button version is owner-only.</td></tr>
-      </tbody></table>
-    </article>
-
-    <article data-page="/docs/limits" data-group="Reference and help" data-title="AI limits">
-      <h1>AI limits</h1>
-      <p>Each session has a daily spending limit on the shared AI key, currently about $2. When a session reaches it, shared AI features pause until the next day (UTC) and the chat says so. Your own AI keeps working.</p>
-      <p>The team agent also has its own limits: it waits between replies and has an hourly cap.</p>
-    </article>
-
-    <article data-page="/docs/security" data-group="Reference and help" data-title="Security and data">
-      <h1>Security and data</h1>
-      <p class="lede">Before your team starts, know that a synced session's chat, plans and code are stored on our server.</p>
-      <h2>What leaves your computer</h2>
-      <table><thead><tr><th>Data</th><th>Where it goes</th></tr></thead><tbody>
-        <tr><td>Session chat, plans and synced code</td><td>Stored on our server so teammates can receive them.</td></tr>
-        <tr><td>Text sent to shared AI features, including team chat when the team agent is on</td><td>The AI provider, using the service's key.</td></tr>
-        <tr><td>Requests to your own AI</td><td>The AI provider you set up, using your key.</td></tr>
-        <tr><td>Your work in solo mode</td><td>No team session. Requests to your AI still go to its provider.</td></tr>
-      </tbody></table>
-      <h2>Who can join</h2>
-      <p>People need a session's secret invite link and the owner's approval.</p>
-      <h2>Sign-in</h2>
-      <p>You sign in through GitHub or Google. Current versions of the app send your sign-in token in request headers, not in web addresses.</p>
-      <h2>Shared previews</h2>
-      <p>Previews expire after 2 hours at most. Only open previews from people you trust.</p>
-    </article>
-
-    <article data-page="/docs/troubleshooting" data-group="Reference and help" data-title="Troubleshooting">
-      <h1>Troubleshooting</h1>
-      <h2>"session not found, or the invite isn't valid"</h2>
-      <p>The link is incomplete or isn't for this session. Ask the owner to send a new one using <strong>Copy invite link</strong>, and paste the whole link.</p>
-      <h2>"the session owner declined this request"</h2>
-      <p>The owner turned down this account. Contact them directly if that was a mistake.</p>
-      <h2>"the session owner hasn't approved you yet"</h2>
-      <p>The app stopped waiting after 10 minutes. Ask the owner to check their panel, then open the invite link again.</p>
-      <h2>"Nothing answered on localhost:PORT"</h2>
-      <p>The shared app isn't running on the sharer's computer, or the port is wrong. Start the app, or share again with the right port.</p>
-      <h2>"This session has reached today's limit"</h2>
-      <p>The session used its <a href="/docs/limits">daily allowance</a> on the shared AI key. Use <strong>My AI</strong>, or wait until the next day (UTC).</p>
-      <h2>Sign-in doesn't return to the app</h2>
-      <p>Keep the app open while you finish in the browser, then click <strong>Sign in</strong> again if it doesn't complete.</p>
-    </article>
-
-    <article data-page="/docs/faq" data-group="Reference and help" data-title="FAQ">
-      <h1>FAQ</h1>
-      <h2>Do I have to use a team session?</h2>
-      <p>No. Solo mode works as a normal editor with an AI beside you.</p>
-      <h2>Can I use my own API key?</h2>
-      <p>Yes. <strong>My AI</strong> uses your own setup and key.</p>
-      <h2>Can two agents work in one file?</h2>
-      <p>Yes, as long as they stay in different functions. See <a href="/docs/claims">Function claims</a>.</p>
-      <h2>How do I get I?</h2>
-      <p>I is in private development. <a href="/download">Join the waitlist</a> for access.</p>
-    </article>
+{{ARTICLE}}
+{{PAGER}}
   </main>
   <nav class="docs-rail" aria-label="On this page" hidden></nav>
 </div>
 <script>{{SIM}}</script>
 <script>
 (function () {
-  var articles = Array.prototype.slice.call(document.querySelectorAll("article[data-page]"));
-  var links = Array.prototype.slice.call(document.querySelectorAll(".docs-side a"));
+  var article = document.querySelector("article[data-page]");
   var input = document.getElementById("docs-search");
   var results = document.getElementById("docs-results");
+  var side = document.querySelector(".docs-side");
 
-  function show(path) {
-    var clean = path.replace(/\/+$/, "") || "/docs";
-    var found = articles.some(function (a) { return a.dataset.page === clean; });
-    if (!found) clean = "/docs";
-    articles.forEach(function (a) {
-      a.hidden = a.dataset.page !== clean;
-      if (!a.hidden) document.title = a.dataset.title + " | I Docs";
-    });
-    links.forEach(function (l) {
-      if (l.getAttribute("href") === clean) l.setAttribute("aria-current", "page");
-      else l.removeAttribute("aria-current");
-    });
-    var current = articles.filter(function (a) { return !a.hidden; })[0];
-    document.querySelectorAll(".docs-side details").forEach(function (group) {
-      if (group.querySelector("[aria-current]")) group.open = true;
-    });
-    var rail = document.querySelector(".docs-rail");
-    rail.textContent = "";
-    var headings = current.querySelectorAll("h2:not(.plain)");
-    rail.hidden = headings.length < 2;
-    if (!rail.hidden) {
-      var title = document.createElement("h3");
-      title.textContent = "On this page";
-      rail.appendChild(title);
-      headings.forEach(function (heading) {
-        heading.id = heading.id || heading.textContent.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-        var link = document.createElement("a");
-        link.href = "#" + heading.id;
-        link.textContent = heading.textContent;
-        rail.appendChild(link);
-      });
-    }
-    var target = location.hash && document.getElementById(location.hash.slice(1));
-    if (target) target.scrollIntoView(); else window.scrollTo(0, 0);
-  }
-
-  function go(path) {
-    history.pushState(null, "", path);
-    show(path);
-    results.hidden = true;
-    input.value = "";
-  }
-
-  document.addEventListener("click", function (event) {
-    var link = event.target.closest && event.target.closest("a[href^='/docs']");
-    if (!link || event.metaKey || event.ctrlKey) return;
-    event.preventDefault();
-    go(link.getAttribute("href"));
+  // Keep the index where it was when the next page opens.
+  try {
+    var saved = sessionStorage.getItem("i-docs-index");
+    if (saved) side.scrollTop = Number(saved);
+  } catch (_) {}
+  side.addEventListener("click", function () {
+    try { sessionStorage.setItem("i-docs-index", String(side.scrollTop)); } catch (_) {}
   });
-  window.addEventListener("popstate", function () { show(location.pathname); });
 
+  // Copy this page's link.
+  var copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "copy-link";
+  copy.textContent = "Copy link";
+  copy.addEventListener("click", function () {
+    var done = function (text) {
+      copy.textContent = text;
+      setTimeout(function () { copy.textContent = "Copy link"; }, 1500);
+    };
+    var url = location.origin + article.dataset.page;
+    if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { done("Copied"); }, function () { done("Couldn't copy"); });
+    else done("Couldn't copy");
+  });
+  article.insertBefore(copy, article.querySelector("h1").nextSibling);
+
+  // On this page.
+  var rail = document.querySelector(".docs-rail");
+  var headings = article.querySelectorAll("h2:not(.plain)");
+  rail.hidden = headings.length < 2;
+  if (!rail.hidden) {
+    var title = document.createElement("h3");
+    title.textContent = "On this page";
+    rail.appendChild(title);
+    headings.forEach(function (heading) {
+      heading.id = heading.id || heading.textContent.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      var link = document.createElement("a");
+      link.href = "#" + heading.id;
+      link.textContent = heading.textContent;
+      rail.appendChild(link);
+    });
+  }
+  // A section link should land on its section, not where the page was last left.
+  if (location.hash) history.scrollRestoration = "manual";
+  function scrollToHash() {
+    var target = location.hash && document.getElementById(location.hash.slice(1));
+    if (target) target.scrollIntoView({ behavior: "auto" });
+  }
+  scrollToHash();
+  // Images above the target change the page's height as they load.
+  window.addEventListener("load", scrollToHash);
+
+  // Search reads a list of every page, fetched the first time it's needed.
+  var index = null;
+  function loadIndex() {
+    if (!index) index = fetch("/docs/search.json").then(function (response) { return response.json(); });
+    return index;
+  }
+  input.addEventListener("focus", loadIndex);
   input.addEventListener("input", function () {
     var query = input.value.trim().toLowerCase();
-    results.textContent = "";
     if (!query) { results.hidden = true; return; }
-    var hits = articles.filter(function (a) { return a.textContent.toLowerCase().indexOf(query) !== -1; });
-    hits.slice(0, 8).forEach(function (a) {
-      var link = document.createElement("a");
-      link.href = a.dataset.page;
-      link.textContent = a.dataset.title;
-      var group = document.createElement("span");
-      group.textContent = a.dataset.group;
-      link.appendChild(group);
-      results.appendChild(link);
+    loadIndex().then(function (pages) {
+      if (input.value.trim().toLowerCase() !== query) return;
+      results.textContent = "";
+      var hits = pages.filter(function (page) { return page.title.toLowerCase().indexOf(query) !== -1; })
+        .concat(pages.filter(function (page) { return page.title.toLowerCase().indexOf(query) === -1 && page.text.toLowerCase().indexOf(query) !== -1; }));
+      hits.slice(0, 8).forEach(function (page) {
+        var link = document.createElement("a");
+        link.href = page.path;
+        link.textContent = page.title;
+        var group = document.createElement("span");
+        group.textContent = page.group;
+        link.appendChild(group);
+        results.appendChild(link);
+      });
+      if (!hits.length) {
+        var none = document.createElement("p");
+        none.textContent = "No pages match that search.";
+        results.appendChild(none);
+      }
+      results.hidden = false;
+    }).catch(function () {
+      results.textContent = "";
+      var failed = document.createElement("p");
+      failed.textContent = "Search didn't load. Refresh the page and try again.";
+      results.appendChild(failed);
+      results.hidden = false;
     });
-    if (!hits.length) {
-      var none = document.createElement("p");
-      none.textContent = "No pages match that search.";
-      results.appendChild(none);
-    }
-    results.hidden = false;
   });
   document.addEventListener("keydown", function (event) {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -439,39 +178,7 @@
     }
   });
 
-  // A button to copy each page's link.
-  articles.forEach(function (article) {
-    var button = document.createElement("button");
-    button.type = "button";
-    button.className = "copy-link";
-    button.textContent = "Copy link";
-    button.addEventListener("click", function () {
-      var url = location.origin + article.dataset.page;
-      var done = function (text) { button.textContent = text; setTimeout(function () { button.textContent = "Copy link"; }, 1500); };
-      if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { done("Copied"); }, function () { done("Couldn't copy"); });
-      else done("Couldn't copy");
-    });
-    article.insertBefore(button, article.querySelector("h1").nextSibling);
-  });
-
-  // Previous and next links, in sidebar order.
-  articles.forEach(function (article, index) {
-    var pager = document.createElement("div");
-    pager.className = "pager";
-    [[articles[index - 1], "Previous"], [articles[index + 1], "Next"]].forEach(function (entry) {
-      if (!entry[0]) { pager.appendChild(document.createElement("span")); return; }
-      var link = document.createElement("a");
-      link.href = entry[0].dataset.page;
-      var label = document.createElement("small");
-      label.textContent = entry[1];
-      link.appendChild(label);
-      link.appendChild(document.createTextNode(entry[0].dataset.title));
-      pager.appendChild(link);
-    });
-    article.appendChild(pager);
-  });
-
-  // Situation chooser.
+  // Situation chooser on the overview.
   document.querySelectorAll("[data-paths]").forEach(function (paths) {
     var tabs = paths.querySelectorAll("[data-path]");
     tabs.forEach(function (tab) {
@@ -483,29 +190,6 @@
       });
     });
   });
-
-  // Quickstart progress, remembered in this browser only.
-  document.querySelectorAll("[data-checklist]").forEach(function (list) {
-    var boxes = Array.prototype.slice.call(list.querySelectorAll("input[data-step]"));
-    var saved = {};
-    try { saved = JSON.parse(localStorage.getItem("i-quickstart") || "{}"); } catch (_) {}
-    function refresh() {
-      var done = boxes.filter(function (box) { return box.checked; }).length;
-      list.querySelector("[data-progress]").textContent = done === boxes.length ? "All done. Your team is set up." : done + " of " + boxes.length + " done";
-      list.querySelector("[data-bar]").style.width = (done / boxes.length * 100) + "%";
-    }
-    boxes.forEach(function (box) {
-      box.checked = !!saved[box.dataset.step];
-      box.addEventListener("change", function () {
-        saved[box.dataset.step] = box.checked;
-        try { localStorage.setItem("i-quickstart", JSON.stringify(saved)); } catch (_) {}
-        refresh();
-      });
-    });
-    refresh();
-  });
-
-  show(location.pathname);
 })();
 </script>
 </body>

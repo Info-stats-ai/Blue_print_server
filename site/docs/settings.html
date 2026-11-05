@@ -1,0 +1,24 @@
+<article data-page="/docs/settings" data-group="Use the editor" data-title="Settings and key bindings">
+<h1>Settings and key bindings</h1>
+<p class="lede">Change settings in the Settings Editor or directly in a JSON file.</p>
+<h2>Open your settings</h2>
+<table><thead><tr><th>Press</th><th>To open</th></tr></thead><tbody>
+  <tr><td><kbd>Cmd</kbd>+<kbd>,</kbd></td><td>The Settings Editor, where you can search for a setting by name.</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>,</kbd></td><td>Your <code>settings.json</code> file.</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>K</kbd> then <kbd>Cmd</kbd>+<kbd>S</kbd></td><td>Your key bindings.</td></tr>
+  <tr><td><kbd>Cmd</kbd>+<kbd>K</kbd> then <kbd>Cmd</kbd>+<kbd>T</kbd></td><td>The theme selector.</td></tr>
+</tbody></table>
+<h2>Where settings are stored</h2>
+<ul>
+  <li><strong>Your settings:</strong> <code>~/.config/i-ide/settings.json</code></li>
+  <li><strong>Project settings:</strong> <code>.zed/settings.json</code> in your project. These override your own settings for that project.</li>
+</ul>
+<h2>Example</h2>
+<pre><code>{
+  "theme": "One Dark",
+  "buffer_font_size": 14,
+  "format_on_save": "on"
+}</code></pre>
+<h2>I-mode settings</h2>
+<p>See the <a href="/docs/settings-reference">settings reference</a> for what each I-mode setting does.</p>
+</article>

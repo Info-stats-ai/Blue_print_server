@@ -1,0 +1,26 @@
+<article data-page="/docs/team-agent" data-group="Work with AI" data-title="The team agent">
+<h1>The team agent</h1>
+<p class="lede">The team agent is an optional AI teammate that follows your chat and speaks up when it can help.</p>
+<h2>Turn it on</h2>
+<ol>
+  <li>If you own the session, select the people icon.</li>
+  <li>Select <strong>Team agent follows the chat</strong>. Everyone's chat says it's on.</li>
+</ol>
+<p>Select it again to turn it off.</p>
+<h2>What it does</h2>
+<ul>
+  <li>Answers questions it can help with.</li>
+  <li>Points out clashes, such as two people claiming the same work.</li>
+  <li>Writes <code>REFERENCE.md</code> when the team clearly agrees on a plan.</li>
+</ul>
+<h2>When it stays quiet</h2>
+<p>It ignores small talk and otherwise stays silent. It waits at least 20 seconds between replies and has an hourly cap.</p>
+<h2>Example</h2>
+<ol>
+  <li>Bob: "I'll take the tests and the CLI."</li>
+  <li>Alice: "I'm doing the CLI too." The agent points out the overlap.</li>
+  <li>Alice: "OK: Bob does tests, I do the CLI. Agreed?"</li>
+  <li>Bob: "Agreed." The agent confirms the split and writes it to <code>REFERENCE.md</code>.</li>
+</ol>
+<div class="callout important"><strong>Important</strong><p>While it's on, team chat is sent to the AI provider using the service's shared key. <a href="/docs/limits">AI limits</a> apply.</p></div>
+</article>

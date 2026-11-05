@@ -1,0 +1,21 @@
+<article data-page="/docs/claims" data-group="Work with AI" data-title="Function claims">
+<h1>Function claims</h1>
+<p class="lede">Function claims stop two agents from changing the same code at once, while letting them share a file.</p>
+<h2>How claims work</h2>
+<ol>
+  <li>Before an agent writes to a file, it claims the functions it will change.</li>
+  <li>I checks those functions against every other agent's claims, including your other agents and your teammates'.</li>
+  <li>If nothing clashes, the agent goes ahead.</li>
+  <li>If another agent holds one of those functions, the agent steps back and the chat shows a message, such as "Collision avoided: Bob's agent stepped back from TaskStore.complete; Alice's agent is already changing it."</li>
+</ol>
+<p>An agent that can't say in advance where it will edit claims the whole file, which clashes with any other claim on that file.</p>
+<h2>Try it</h2>
+<div class="claim-sim" data-sim></div>
+<h2>What claims don't do</h2>
+<ul>
+  <li><strong>They don't block people.</strong> You can always type in any file.</li>
+  <li><strong>They don't lock your Git branch.</strong> They only coordinate live agent work.</li>
+</ul>
+<h2>Why not lock files?</h2>
+<p>A file lock lets only one agent work in a file at a time, so a team is capped at one agent per file. In our simulated benchmark of 25 agents across 4 files, 86 agents kept working with function claims, compared with 20 under file locks.</p>
+</article>

@@ -1,0 +1,30 @@
+<article data-page="/docs/security" data-group="Reference" data-title="Security and data">
+<h1>Security and data</h1>
+<p class="lede">Before your team starts, know that a synced session's chat, plans and code are stored on our server.</p>
+<h2>What leaves your computer</h2>
+<table><thead><tr><th>Data</th><th>Where it goes</th></tr></thead><tbody>
+  <tr><td>Session chat, plans and synced code</td><td>Stored on our server so teammates can receive them.</td></tr>
+  <tr><td>Text used by shared AI features, including team chat when the team agent is on</td><td>The AI provider, using the service's key.</td></tr>
+  <tr><td>Requests to your own AI</td><td>The AI provider you set up, using your key.</td></tr>
+  <tr><td>Files in solo mode</td><td>Not shared with a team. What your AI reads goes to its provider.</td></tr>
+  <tr><td>Usage data and crash reports</td><td>Not sent. Telemetry is off by default.</td></tr>
+</tbody></table>
+<h2>Who can join a session</h2>
+<p>A person needs both the secret invite link and the owner's approval. See <a href="/docs/invites">Invites and approvals</a>.</p>
+<h2>Signing in</h2>
+<p>You sign in with GitHub or Google. Your sign-in token is sent in request headers rather than web addresses by current versions of the app.</p>
+<h2>Protecting secrets</h2>
+<ul>
+  <li>Agents and syncing skip <a href="/docs/live-editing">files that usually hold credentials</a>.</li>
+  <li>Text that looks like an API key or token is masked in your AI's replies before they're shared.</li>
+  <li>Your AI asks before running commands.</li>
+</ul>
+<p>These checks catch common cases, not all of them, so keep secrets out of your source code.</p>
+<h2>Shared previews</h2>
+<p>A preview runs a teammate's code in your browser. It expires after 2 hours at most. Only open previews from people you trust.</p>
+<h2>Limits to know about</h2>
+<ul>
+  <li>Anyone in a session can read what's synced to it.</li>
+  <li>I is in private development and hasn't had an independent security audit.</li>
+</ul>
+</article>

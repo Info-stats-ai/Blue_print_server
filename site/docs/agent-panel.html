@@ -1,0 +1,42 @@
+<article data-page="/docs/agent-panel" data-group="Work with AI" data-title="The Agent Panel">
+<h1>The Agent Panel</h1>
+<p class="lede">The Agent Panel gives you longer-running AI threads, separate from the I panel. Press <kbd>Cmd</kbd>+<kbd>?</kbd> to open it.</p>
+<h2>When to use which</h2>
+<table><thead><tr><th>Use</th><th>For</th></tr></thead><tbody>
+  <tr><td><strong>I panel</strong></td><td>Quick requests alongside team chat.</td></tr>
+  <tr><td><strong>Agent Panel</strong></td><td>Bigger tasks, separate threads, and tasks started from the <a href="/docs/tasks">task board</a>.</td></tr>
+</tbody></table>
+<h2>Use it with your team</h2>
+<p>Agent Panel threads are private to you, and they still work with your team:</p>
+<ul>
+  <li>An agent can check what your team is doing when your request needs it, using its <code>team_context</code> tool.</li>
+  <li>It follows the same <a href="/docs/claims">function claims</a> as other agents.</li>
+  <li>Its edits appear in the I panel, where you can select <strong>Sync to team</strong>.</li>
+</ul>
+<h2>Other agents</h2>
+<p>The welcome page and Agent Panel let you install other agents, such as Claude Agent, Codex, GitHub Copilot and Cursor. Each uses its own account or key.</p>
+<h2>Control what agents can do</h2>
+<p>Use <code>tool_permissions</code> in your settings to allow, block or always confirm actions:</p>
+<pre><code>{
+  "agent": {
+    "tool_permissions": {
+      "tools": {
+        "terminal": {
+          "default": "confirm",
+          "always_allow": [{ "pattern": "^pytest" }]
+        }
+      }
+    }
+  }
+}</code></pre>
+<h2>Connect outside tools</h2>
+<p>Add Model Context Protocol (MCP) servers to give agents more tools:</p>
+<pre><code>{
+  "context_servers": {
+    "my-server": {
+      "command": "some-command",
+      "args": []
+    }
+  }
+}</code></pre>
+</article>

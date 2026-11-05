@@ -1,0 +1,24 @@
+<article data-page="/docs/terminal-tasks" data-group="Use the editor" data-title="Terminal, tasks and debugging">
+<h1>Terminal, tasks and debugging</h1>
+<p class="lede">Run your code without leaving I.</p>
+<h2>Terminal</h2>
+<ol><li>Press <kbd>Ctrl</kbd>+<kbd>`</kbd> to open or hide the terminal.</li><li>Press <kbd>Ctrl</kbd>+<kbd>~</kbd> to open a new terminal tab.</li></ol>
+<h2>Tasks</h2>
+<p>A task is a saved command, such as your test run.</p>
+<ol>
+  <li>Open the Command Palette and run <code>zed: open project tasks</code>, or create the file <code>.zed/tasks.json</code> in your project.</li>
+  <li>Add a task:
+<pre><code>[
+  {
+    "label": "Run tests",
+    "command": "pytest"
+  }
+]</code></pre></li>
+  <li>Press <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> and choose your task.</li>
+  <li>Press <kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>R</kbd> to run the last task again.</li>
+</ol>
+<h2>Debugging</h2>
+<ol><li>Press <kbd>F4</kbd> to start a debug session and choose what to run.</li><li>Press <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> to open the debug panel.</li></ol>
+<h2>Next steps</h2>
+<ul><li><a href="/docs/previews">Share a running app with your team</a></li></ul>
+</article>

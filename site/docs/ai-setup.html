@@ -1,0 +1,31 @@
+<article data-page="/docs/ai-setup" data-group="Work with AI" data-title="Set up your AI">
+<h1>Set up your AI</h1>
+<p class="lede">I uses AI models from providers you choose, with your own API key. Set this up once, and both the I panel and the Agent Panel can use it.</p>
+<h2>Add an API key</h2>
+<ol>
+  <li>Get an API key from your provider, such as Anthropic.</li>
+  <li>Open the Agent Panel with <kbd>Cmd</kbd>+<kbd>?</kbd>, then open its settings.</li>
+  <li>Find your provider and paste your key.</li>
+</ol>
+<p>Your key is saved on your computer and used to call the provider directly.</p>
+<div class="callout important"><strong>Important</strong><p>Your provider bills you for this usage. Check their pricing before running long agent tasks.</p></div>
+<h2>Choose a model</h2>
+<ol>
+  <li>At the bottom of the I panel, select the model name.</li>
+  <li>Choose a model. The list shows every model your providers offer.</li>
+</ol>
+<p>If no model is set up, the panel tells you to pick one or add a provider key.</p>
+<h2>Use a local model</h2>
+<p>If you run Ollama on your computer, its models appear in the same list.</p>
+<h2>Set a default in settings</h2>
+<pre><code>{
+  "agent": {
+    "default_model": {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-6"
+    }
+  }
+}</code></pre>
+<h2>Next steps</h2>
+<ul><li><a href="/docs/your-ai">Work with your AI</a></li></ul>
+</article>
