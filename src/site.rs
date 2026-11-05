@@ -75,6 +75,15 @@ const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
     script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; media-src 'self'; \
     base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
+/// Where search engines should send people, whichever address a page was
+/// reached on.
+const PUBLIC_SITE: &str = "https://i-ide.dev";
+
+fn indexable(template: &str, path: &str) -> Response {
+    let canonical = format!("<link rel=\"canonical\" href=\"{PUBLIC_SITE}{path}\">\n</head>");
+    html(&template.replacen("</head>", &canonical, 1))
+}
+
 fn html(template: &str) -> Response {
     let body = template.replace("{{CSS}}", CSS).replace("{{NAV}}", NAV).replace("{{SIM}}", SIM);
     (
@@ -91,8 +100,10 @@ fn html(template: &str) -> Response {
 /// The website's page at `path`, for requests no route or shared app claimed.
 pub fn page(path: &str) -> Response {
     match path.trim_end_matches('/') {
-        "" => html(HOME),
-        "/download" => html(DOWNLOAD),
+        "" => indexable(HOME, "/"),
+        "/download" => indexable(DOWNLOAD, "/download"),
+        "/robots.txt" => plain(format!("User-agent: *\nAllow: /\nSitemap: {PUBLIC_SITE}/sitemap.xml\n"), "text/plain"),
+        "/sitemap.xml" => plain(sitemap(), "application/xml"),
         "/docs" => doc_page(DOC_OVERVIEW),
         "/docs/search.json" => doc_search_index(),
         path if path.strip_prefix("/docs/").is_some_and(|slug| doc_article(slug).is_some()) => {
@@ -154,7 +165,20 @@ fn doc_page(article: &str) -> Response {
             page.insert_str(group + "<details".len(), " open");
         }
     }
-    html(&page)
+    indexable(&page, path)
+}
+
+fn plain(body: String, content_type: &'static str) -> Response {
+    ([(header::CONTENT_TYPE, content_type)], body).into_response()
+}
+
+fn sitemap() -> String {
+    let urls: String = ["/", "/download"]
+        .into_iter()
+        .chain(doc_articles().map(|article| article_attribute(article, "data-page")))
+        .map(|path| format!("<url><loc>{PUBLIC_SITE}{path}</loc></url>"))
+        .collect();
+    format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">{urls}</urlset>")
 }
 
 fn strip_tags(fragment: &str) -> String {
@@ -304,7 +328,7 @@ mod tests {
     async fn each_docs_page_holds_only_its_own_content() {
         let claims = body(page("/docs/claims")).await;
         assert_eq!(claims.matches("<article").count(), 1);
-        assert!(claims.contains("<title>Function claims | I Docs</title>"));
+        assert!(claims.contains("<title>Function claims | I-IDE Docs</title>"));
         assert!(claims.contains("<a aria-current=\"page\" href=\"/docs/claims\""));
         assert!(claims.contains("<details open><summary>Work with AI"));
         assert_eq!(claims.matches("<details open>").count(), 1);
@@ -314,7 +338,15 @@ mod tests {
 
         let overview = body(page("/docs")).await;
         assert_eq!(overview.matches("<article").count(), 1);
+        assert!(overview.contains("<link rel=\"canonical\" href=\"https://i-ide.dev/docs\">"));
         assert!(!overview.contains("<small>Previous</small>"));
+    }
+
+    #[tokio::test]
+    async fn the_sitemap_lists_every_page() {
+        let sitemap = body(page("/sitemap.xml")).await;
+        assert!(sitemap.contains("<loc>https://i-ide.dev/docs/tutorial</loc>"));
+        assert!(body(page("/robots.txt")).await.contains("Sitemap: https://i-ide.dev/sitemap.xml"));
     }
 
     #[tokio::test]
