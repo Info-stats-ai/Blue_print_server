@@ -1,0 +1,46 @@
+<article data-page="/docs/agent-runs" data-group="Work with AI" data-title="Agent runs and sharing">
+<h1>Agent runs and sharing</h1>
+<p class="lede">Every task your agent takes on becomes a run. Each run has a goal, steps, an outcome and a review from your team, so the next agents can build on good work and avoid repeating work that was sent back. You decide how much of your agents' work is shared.</p>
+<h2>The life of a run</h2>
+<ol>
+  <li><strong>Plan.</strong> When you give the I-mode agent a task in Agent mode, the task becomes the run's goal.</li>
+  <li><strong>Run.</strong> While the agent works, each step it takes belongs to the run: what it's thinking, what it did and what came back.</li>
+  <li><strong>Finish.</strong> When the agent stops, the run shows how it ended and which files it changed. If you stop the AI yourself, the run shows as stopped.</li>
+  <li><strong>Review.</strong> Teammates mark a finished run <strong>Accept</strong> or <strong>Needs changes</strong>. You can't review your own agent's runs.</li>
+  <li><strong>Remember.</strong> Every agent in the session sees reviewed runs. They build on accepted work and avoid repeating work that was sent back.</li>
+</ol>
+<h2>Reading a run</h2>
+<p>Runs appear in the <a href="/docs/team-tab">Team tab</a> under <strong>Agent runs</strong>, newest first. Each card shows the status, whose agent ran it, the goal, the files it changed and the reviews it has.</p>
+<table><thead><tr><th>Icon</th><th>Meaning</th></tr></thead><tbody>
+  <tr><td>Spinning circle</td><td>The run is still going.</td></tr>
+  <tr><td>Check mark</td><td>The run finished.</td></tr>
+  <tr><td>Crossed circle</td><td>The run failed, for example because the AI request failed.</td></tr>
+  <tr><td>Square</td><td>Someone stopped the run.</td></tr>
+  <tr><td>Thumbs up and a number</td><td>How many teammates accepted it. Point at it to see who.</td></tr>
+  <tr><td>Thumbs down and a number</td><td>How many teammates asked for changes.</td></tr>
+</tbody></table>
+<p>Select <strong>steps</strong> on a card to see what the agent did, one line per step:</p>
+<table><thead><tr><th>Icon</th><th>Step</th></tr></thead><tbody>
+  <tr><td>Checklist</td><td>Plan: the goal.</td></tr>
+  <tr><td>Thought bubble</td><td>Reasoning: what the agent was thinking.</td></tr>
+  <tr><td>Hammer</td><td>Action: a tool it used, such as reading a file or running a command.</td></tr>
+  <tr><td>Return arrow</td><td>Result: what came back.</td></tr>
+  <tr><td>Terminal</td><td>A terminal run you chose to share.</td></tr>
+</tbody></table>
+<p>Steps that don't belong to a run, such as terminal runs and edits from the Agent Panel, appear under <strong>Other agent steps</strong>.</p>
+<h2>Choose what you share</h2>
+<p>Select the people icon in the I-mode panel, then choose under <strong>Your agents' work</strong>. Your agents always see each other's work on your machine. These settings only control what reaches your team.</p>
+<table><thead><tr><th>Level</th><th>What your team sees</th></tr></thead><tbody>
+  <tr><td><strong>Off</strong></td><td>Nothing. No runs and no steps.</td></tr>
+  <tr><td><strong>Actions</strong> (default)</td><td>The goal, status and changed files of each run, plus each action.</td></tr>
+  <tr><td><strong>Actions and reasoning</strong></td><td>Also what the agent was thinking.</td></tr>
+  <tr><td><strong>Everything</strong></td><td>Also the results, and each run's final answer.</td></tr>
+</tbody></table>
+<ul>
+  <li><strong>Pause sharing</strong> stops sharing right away, without changing your level.</li>
+  <li><strong>Private paths…</strong> lists files and folders that are never shared, whatever your level is. Secret files such as <code>.env</code> are never shared either.</li>
+  <li><strong>Share terminal runs</strong> (off by default) shares the command, whether it passed or failed, and the last 25 lines of output when a task finishes.</li>
+  <li><strong>Save shared steps to team memory</strong> (off by default) keeps your shared steps and runs, with their reviews, after the session ends. When it's off, they're only shown live and kept in memory for a short while.</li>
+</ul>
+<p>Before anything is shared, text that looks like a key or password is masked and long text is shortened.</p>
+</article>

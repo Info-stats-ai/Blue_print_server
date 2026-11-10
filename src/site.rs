@@ -48,6 +48,7 @@ const DOC_PAGES: &[(&str, &str)] = &[
     ("agent-panel", include_str!("../site/docs/agent-panel.html")),
     ("claims", include_str!("../site/docs/claims.html")),
     ("team-agent", include_str!("../site/docs/team-agent.html")),
+    ("agent-runs", include_str!("../site/docs/agent-runs.html")),
     ("reference-doc", include_str!("../site/docs/reference-doc.html")),
     ("triage", include_str!("../site/docs/triage.html")),
     ("settings-reference", include_str!("../site/docs/settings-reference.html")),

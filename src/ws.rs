@@ -141,6 +141,9 @@ struct SessionChannel {
     agent_activity: HashMap<String, AgentActivity>,
     // The latest agent steps people shared, oldest first, for late joiners.
     agent_steps: std::collections::VecDeque<serde_json::Value>,
+    // The latest agent runs, oldest first: each task an agent took on, how it
+    // ended, and what teammates thought of the result.
+    agent_runs: std::collections::VecDeque<AgentRun>,
     // Per person: when their current one-second window started, and how
     // many steps they've shared in it.
     step_rate: HashMap<String, (Instant, u32)>,
@@ -247,6 +250,41 @@ pub struct BufferJoin {
     pub operations: Vec<WireOperation>,
     pub replica_authors: Vec<(u16, String)>,
     pub agent_edits: Vec<(u16, u32)>,
+}
+
+/// One task an agent took on, from goal to review: the agent development
+/// lifecycle as the team sees it.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AgentRun {
+    pub user_id: String,
+    pub run_id: String,
+    pub agent: String,
+    pub goal: String,
+    /// "running", then "done", "failed" or "stopped".
+    pub status: String,
+    pub files: Vec<String>,
+    pub summary: Option<String>,
+    pub reviews: Vec<RunReview>,
+    pub started_at: String,
+    pub updated_at: String,
+    /// Kept in team memory; not sent to clients.
+    #[serde(skip)]
+    pub remember: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RunReview {
+    pub reviewer_id: String,
+    /// "accepted" or "changes".
+    pub verdict: String,
+    pub note: Option<String>,
+    pub at: String,
+}
+
+impl AgentRun {
+    fn is_finished(&self) -> bool {
+        self.status != "running"
+    }
 }
 
 #[derive(Clone, Default)]
@@ -369,6 +407,54 @@ mod agent_step_tests {
 }
 
 #[cfg(test)]
+mod agent_run_tests {
+    use super::*;
+
+    fn run(user: &str, id: &str, status: &str) -> AgentRun {
+        clean_agent_run(user, id, "I-mode agent", "Add a login page", status, &[], None, false).unwrap()
+    }
+
+    #[test]
+    fn run_updates_are_checked_and_trimmed() {
+        assert!(clean_agent_run("u", "bad id!", "a", "goal", "running", &[], None, false).is_none());
+        assert!(clean_agent_run("u", "r1", "a", "goal", "sleeping", &[], None, false).is_none());
+        assert!(clean_agent_run("u", "r1", "a", "   ", "running", &[], None, false).is_none());
+        let files: Vec<String> = (0..80).map(|n| format!("src/{}.rs", n % 60)).collect();
+        let run = clean_agent_run("u", "r1", "", &"g".repeat(900), "done", &files, Some("ok"), true).unwrap();
+        assert_eq!((run.agent.as_str(), run.goal.len(), run.files.len()), ("agent", 500, MAX_RUN_FILES));
+    }
+
+    #[tokio::test]
+    async fn a_run_goes_from_running_to_reviewed_and_never_back() {
+        let hub = Hub::new();
+        let _peer = hub.add_peer("s", "alice").await;
+        hub.record_agent_run("s", run("alice", "r1", "running")).await.unwrap();
+
+        // Nobody reviews a run that's still going, or their own.
+        let verdict = |who: &str| RunReview { reviewer_id: who.into(), verdict: "accepted".into(), note: None, at: String::new() };
+        assert_eq!(hub.review_agent_run("s", "alice", "r1", verdict("bob")).await.unwrap_err(), "the run hasn't finished");
+        let mut done = run("alice", "r1", "done");
+        done.files = vec!["src/login.rs".into()];
+        let done = hub.record_agent_run("s", done).await.unwrap();
+        assert_eq!(done.goal, "Add a login page");
+        assert_eq!(hub.review_agent_run("s", "alice", "r1", verdict("alice")).await.unwrap_err(), "you can't review your own agent's run");
+
+        // A second verdict from the same person replaces the first.
+        hub.review_agent_run("s", "alice", "r1", verdict("bob")).await.unwrap();
+        let mut changes = verdict("bob");
+        changes.verdict = "changes".into();
+        let reviewed = hub.review_agent_run("s", "alice", "r1", changes).await.unwrap();
+        assert_eq!(reviewed.reviews.len(), 1);
+        assert_eq!(reviewed.reviews[0].verdict, "changes");
+
+        // A finished run doesn't start again, and keeps its reviews on update.
+        assert!(hub.record_agent_run("s", run("alice", "r1", "running")).await.is_none());
+        let runs = hub.recent_agent_runs("s").await;
+        assert_eq!((runs.len(), runs[0].status.as_str(), runs[0].reviews.len()), (1, "done", 1));
+    }
+}
+
+#[cfg(test)]
 mod ai_budget_tests {
     use super::*;
 
@@ -437,6 +523,7 @@ impl Hub {
                 last_seen_total_messages: HashMap::new(),
                 last_activity: Instant::now(),
                 agent_steps: std::collections::VecDeque::new(),
+                agent_runs: std::collections::VecDeque::new(),
                 step_rate: HashMap::new(),
                 replica_authors: HashMap::new(),
                 agent_edits: HashSet::new(),
@@ -1386,6 +1473,89 @@ impl Hub {
         Some(step)
     }
 
+    /// Starts or updates a run and returns it as it now stands, or `None` when
+    /// the sender is over the rate limit or the update isn't allowed. A run's
+    /// goal and start never change, and a finished run can't start again.
+    pub async fn record_agent_run(&self, session_id: &str, mut run: AgentRun) -> Option<AgentRun> {
+        let mut map = self.inner.write().await;
+        let channel = map.get_mut(session_id)?;
+        let now = Instant::now();
+        let window = channel.step_rate.entry(run.user_id.clone()).or_insert((now, 0));
+        if now.duration_since(window.0) >= Duration::from_secs(1) {
+            *window = (now, 0);
+        }
+        if window.1 >= MAX_AGENT_STEPS_PER_SECOND {
+            return None;
+        }
+        window.1 += 1;
+        if let Some(index) = channel
+            .agent_runs
+            .iter()
+            .position(|existing| existing.user_id == run.user_id && existing.run_id == run.run_id)
+        {
+            let mut existing = channel.agent_runs.remove(index)?;
+            if existing.is_finished() && !run.is_finished() {
+                channel.agent_runs.insert(index, existing);
+                return None;
+            }
+            existing.status = run.status;
+            existing.files = run.files;
+            existing.summary = run.summary.or(existing.summary);
+            existing.updated_at = run.updated_at;
+            existing.remember |= run.remember;
+            run = existing;
+        }
+        channel.agent_runs.push_back(run.clone());
+        while channel.agent_runs.len() > RECENT_AGENT_RUNS {
+            channel.agent_runs.pop_front();
+        }
+        Some(run)
+    }
+
+    /// Records a teammate's verdict on a finished run, replacing any earlier
+    /// verdict of theirs. Nobody reviews their own agent's run.
+    pub async fn review_agent_run(
+        &self,
+        session_id: &str,
+        owner_id: &str,
+        run_id: &str,
+        review: RunReview,
+    ) -> Result<AgentRun, &'static str> {
+        let mut map = self.inner.write().await;
+        let channel = map.get_mut(session_id).ok_or("no such session")?;
+        let run = channel
+            .agent_runs
+            .iter_mut()
+            .find(|run| run.user_id == owner_id && run.run_id == run_id)
+            .ok_or("no such run")?;
+        if run.user_id == review.reviewer_id {
+            return Err("you can't review your own agent's run");
+        }
+        if !run.is_finished() {
+            return Err("the run hasn't finished");
+        }
+        run.reviews.retain(|existing| existing.reviewer_id != review.reviewer_id);
+        run.reviews.push(review);
+        Ok(run.clone())
+    }
+
+    pub async fn recent_agent_runs(&self, session_id: &str) -> Vec<AgentRun> {
+        let map = self.inner.read().await;
+        map.get(session_id)
+            .map(|channel| channel.agent_runs.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Restores remembered runs after a restart, unless live ones exist.
+    pub async fn seed_agent_runs_if_empty(&self, session_id: &str, runs: Vec<AgentRun>) {
+        let mut map = self.inner.write().await;
+        if let Some(channel) = map.get_mut(session_id)
+            && channel.agent_runs.is_empty()
+        {
+            channel.agent_runs = runs.into_iter().collect();
+        }
+    }
+
     pub async fn recent_agent_steps(&self, session_id: &str) -> Vec<serde_json::Value> {
         let map = self.inner.read().await;
         map.get(session_id)
@@ -1592,6 +1762,11 @@ async fn handle_socket(
     let changes = state.hub.get_changes(&session_id).await;
     let agent_activity = state.hub.get_agent_activity(&session_id).await;
     let agent_steps = state.hub.recent_agent_steps(&session_id).await;
+    state
+        .hub
+        .seed_agent_runs_if_empty(&session_id, remembered_agent_runs(&state.pool, &session_id).await)
+        .await;
+    let agent_runs = state.hub.recent_agent_runs(&session_id).await;
     let claims = state.hub.get_claims(&session_id).await;
     let catch_up = state.hub.catch_up_digest(&session_id, &user_id).await;
     let presence = state.hub.get_presence(&session_id).await;
@@ -1656,6 +1831,7 @@ async fn handle_socket(
         "changes": changes,
         "agent_activity": agent_activity,
         "agent_steps": agent_steps,
+        "agent_runs": agent_runs,
         "claims": claims,
         "catch_up": catch_up,
         "presence": presence,
@@ -1934,7 +2110,151 @@ enum ClientMessage {
         path: Option<String>,
         #[serde(default)]
         remember: bool,
+        // The run this step belongs to, if any.
+        #[serde(default)]
+        run_id: Option<String>,
     },
+    // An agent run started or changed: its goal, status, files and summary.
+    AgentRun {
+        run_id: String,
+        agent: String,
+        goal: String,
+        status: String,
+        #[serde(default)]
+        files: Vec<String>,
+        #[serde(default)]
+        summary: Option<String>,
+        #[serde(default)]
+        remember: bool,
+    },
+    // A teammate's verdict on a finished run.
+    AgentRunReview {
+        user_id: String,
+        run_id: String,
+        verdict: String,
+        #[serde(default)]
+        note: Option<String>,
+    },
+}
+
+const AGENT_RUN_STATUSES: &[&str] = &["running", "done", "failed", "stopped"];
+const AGENT_RUN_VERDICTS: &[&str] = &["accepted", "changes"];
+const RECENT_AGENT_RUNS: usize = 30;
+const MAX_RUN_FILES: usize = 50;
+
+/// A run id is short and plain, so it can't smuggle anything into a page or log.
+fn clean_run_id(run_id: &str) -> Option<String> {
+    let run_id = run_id.trim();
+    (!run_id.is_empty()
+        && run_id.len() <= 64
+        && run_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+    .then(|| run_id.to_string())
+}
+
+fn trimmed(text: &str, max: usize) -> String {
+    text.trim().chars().take(max).collect()
+}
+
+/// Checks a run update's fields and trims them to size; `None` drops it.
+fn clean_agent_run(
+    user_id: &str,
+    run_id: &str,
+    agent: &str,
+    goal: &str,
+    status: &str,
+    files: &[String],
+    summary: Option<&str>,
+    remember: bool,
+) -> Option<AgentRun> {
+    let run_id = clean_run_id(run_id)?;
+    if !AGENT_RUN_STATUSES.contains(&status) {
+        return None;
+    }
+    let goal = trimmed(goal, 500);
+    if goal.is_empty() {
+        return None;
+    }
+    let agent = trimmed(agent, 60);
+    let mut seen = HashSet::new();
+    let files = files
+        .iter()
+        .map(|path| trimmed(path, 400))
+        .filter(|path| !path.is_empty() && seen.insert(path.clone()))
+        .take(MAX_RUN_FILES)
+        .collect();
+    let now = chrono::Utc::now().to_rfc3339();
+    Some(AgentRun {
+        user_id: user_id.to_string(),
+        run_id,
+        agent: if agent.is_empty() { "agent".to_string() } else { agent },
+        goal,
+        status: status.to_string(),
+        files,
+        summary: summary.map(|summary| trimmed(summary, MAX_AGENT_STEP_CHARS)).filter(|summary| !summary.is_empty()),
+        reviews: Vec::new(),
+        started_at: now.clone(),
+        updated_at: now,
+        remember,
+    })
+}
+
+async fn remembered_agent_runs(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<AgentRun> {
+    let rows: Vec<(String, String, String, String, String, String, Option<String>, String, String, String)> = sqlx::query_as(
+        "SELECT user_id, run_id, agent, goal, status, files, summary, reviews, started_at, updated_at \
+         FROM agent_runs WHERE session_id = ? ORDER BY updated_at DESC LIMIT ?",
+    )
+    .bind(session_id)
+    .bind(RECENT_AGENT_RUNS as i64)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let mut runs: Vec<AgentRun> = rows
+        .into_iter()
+        .map(|(user_id, run_id, agent, goal, status, files, summary, reviews, started_at, updated_at)| AgentRun {
+            user_id,
+            run_id,
+            agent,
+            goal,
+            status,
+            files: serde_json::from_str(&files).unwrap_or_default(),
+            summary,
+            reviews: serde_json::from_str(&reviews).unwrap_or_default(),
+            started_at,
+            updated_at,
+            remember: true,
+        })
+        .collect();
+    runs.reverse();
+    runs
+}
+
+async fn save_agent_run(pool: &sqlx::SqlitePool, session_id: &str, run: &AgentRun) {
+    if !run.remember {
+        return;
+    }
+    let result = sqlx::query(
+        "INSERT INTO agent_runs (session_id, user_id, run_id, agent, goal, status, files, summary, reviews, started_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
+         ON CONFLICT (session_id, user_id, run_id) DO UPDATE SET \
+         status = excluded.status, files = excluded.files, summary = excluded.summary, \
+         reviews = excluded.reviews, updated_at = excluded.updated_at",
+    )
+    .bind(session_id)
+    .bind(&run.user_id)
+    .bind(&run.run_id)
+    .bind(&run.agent)
+    .bind(&run.goal)
+    .bind(&run.status)
+    .bind(serde_json::to_string(&run.files).unwrap_or_else(|_| "[]".into()))
+    .bind(&run.summary)
+    .bind(serde_json::to_string(&run.reviews).unwrap_or_else(|_| "[]".into()))
+    .bind(&run.started_at)
+    .bind(&run.updated_at)
+    .execute(pool)
+    .await;
+    if let Err(error) = result {
+        eprintln!("ws: saving an agent run for {session_id} failed: {error}");
+    }
 }
 
 const AGENT_STEP_KINDS: &[&str] = &["plan", "reasoning", "action", "result"];
@@ -2131,8 +2451,36 @@ async fn handle_client_message(
                 .await;
             None
         }
-        ClientMessage::AgentStep { agent, kind, text, path, remember } => {
+        ClientMessage::AgentRun { run_id, agent, goal, status, files, summary, remember } => {
+            let run = clean_agent_run(user_id, &run_id, &agent, &goal, &status, &files, summary.as_deref(), remember)?;
+            let run = state.hub.record_agent_run(session_id, run).await?;
+            state.hub.broadcast(session_id, &json!({"type": "agent_run", "run": run})).await;
+            save_agent_run(&state.pool, session_id, &run).await;
+            None
+        }
+        ClientMessage::AgentRunReview { user_id: owner_id, run_id, verdict, note } => {
+            if !AGENT_RUN_VERDICTS.contains(&verdict.as_str()) {
+                return None;
+            }
+            let run_id = clean_run_id(&run_id)?;
+            let review = RunReview {
+                reviewer_id: user_id.to_string(),
+                verdict,
+                note: note.map(|note| trimmed(&note, 500)).filter(|note| !note.is_empty()),
+                at: chrono::Utc::now().to_rfc3339(),
+            };
+            match state.hub.review_agent_run(session_id, &owner_id, &run_id, review).await {
+                Ok(run) => {
+                    state.hub.broadcast(session_id, &json!({"type": "agent_run", "run": run})).await;
+                    save_agent_run(&state.pool, session_id, &run).await;
+                    None
+                }
+                Err(reason) => Some(json!({"type": "error", "message": reason})),
+            }
+        }
+        ClientMessage::AgentStep { agent, kind, text, path, remember, run_id } => {
             let (agent, kind, text, path) = clean_agent_step(&agent, &kind, &text, path.as_deref())?;
+            let run_id = run_id.as_deref().and_then(clean_run_id);
             let at = chrono::Utc::now();
             let step = json!({
                 "type": "agent_step",
@@ -2141,6 +2489,7 @@ async fn handle_client_message(
                 "kind": kind,
                 "text": text,
                 "path": path,
+                "run_id": run_id,
                 "at": at.to_rfc3339(),
             });
             let step = state.hub.record_agent_step(session_id, user_id, step).await?;
