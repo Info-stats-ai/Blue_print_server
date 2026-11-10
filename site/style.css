@@ -211,9 +211,7 @@ footer { border-top: 1px solid var(--line); padding-block: 24px 40px; font-size:
 .h-hero h1 { font-size: clamp(2.25rem, 5vw, 3.5rem); font-weight: 400; line-height: 1.1; letter-spacing: -.025em; }
 .h-hero p { color: #c4c9ce; line-height: 1.55; }
 .h-actions { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
-.marquee { position: absolute; left: 0; right: 0; bottom: 28px; z-index: 2; overflow: hidden; mask-image: linear-gradient(90deg, #0000, #000 18%, #000 82%, #0000); }
-.marquee-track { display: flex; gap: 72px; width: max-content; font: 500 1.125rem/1 var(--body); color: #aab0b6; animation: slide 32s linear infinite; }
-@keyframes slide { to { transform: translateX(-50%); } }
+.works-with { position: absolute; left: 0; right: 0; bottom: 28px; z-index: 2; margin: 0; padding-inline: 20px; text-align: center; font-size: .9375rem; color: #aab0b6; }
 .h-section { position: relative; z-index: 2; max-width: 1240px; margin-inline: auto; padding: 96px clamp(24px, 5vw, 56px); border-top: 1px solid var(--line); scroll-margin-top: 60px; }
 .h-head { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 32px 56px; align-items: start; margin-bottom: 48px; max-width: none; }
 .h-head h2, .h-final h2 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 400; line-height: 1.1; letter-spacing: -.025em; }
@@ -280,7 +278,6 @@ footer { border-top: 1px solid var(--line); padding-block: 24px 40px; font-size:
 .h-footer a { display: block; padding-block: 4px; text-decoration: none; }
 .h-footer a:hover { color: var(--fg); }
 .h-foot-note { grid-column: 1 / -1; padding-top: 24px; border-top: 1px solid var(--line); font-size: .8125rem; }
-@media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
 @media (max-width: 900px) {
   .home .top nav { display: none; }
   .h-head, .bento { grid-template-columns: minmax(0, 1fr); }
