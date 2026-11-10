@@ -63,6 +63,9 @@ struct SessionChannel {
     // else: `broadcast` hands a message to all queues while holding this.
     subscribers: std::sync::Mutex<Vec<Subscriber>>,
     peers: HashSet<String>,
+    // Open connections per person: someone with two windows (or a phone and
+    // a laptop) is only gone when the last one closes.
+    connections: HashMap<String, usize>,
     history: Vec<ChatMessage>,
     blueprint: String,
     // Keyed by path, not a single slot, so a session can later carry
@@ -407,6 +410,22 @@ mod agent_step_tests {
 }
 
 #[cfg(test)]
+mod connection_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_person_is_gone_only_when_their_last_connection_closes() {
+        let hub = Hub::new();
+        let _laptop = hub.add_peer("s", "dave").await;
+        let _phone = hub.add_peer("s", "dave").await;
+        assert!(!hub.remove_peer("s", "dave").await, "one window closed, the other is still open");
+        assert_eq!(hub.peer_ids("s").await, vec!["dave".to_string()]);
+        assert!(hub.remove_peer("s", "dave").await);
+        assert!(hub.peer_ids("s").await.is_empty());
+    }
+}
+
+#[cfg(test)]
 mod agent_run_tests {
     use super::*;
 
@@ -511,6 +530,7 @@ impl Hub {
             .or_insert_with(|| SessionChannel {
                 subscribers: std::sync::Mutex::new(Vec::new()),
                 peers: HashSet::new(),
+                connections: HashMap::new(),
                 history: Vec::new(),
                 blueprint: String::new(),
                 files: HashMap::new(),
@@ -537,6 +557,7 @@ impl Hub {
                 claims: HashMap::new(),
             });
         channel.peers.insert(user_id.to_string());
+        *channel.connections.entry(user_id.to_string()).or_insert(0) += 1;
         channel.last_activity = Instant::now();
         let (tx, rx) = mpsc::unbounded_channel();
         let id = self.next_subscriber_id.fetch_add(1, Ordering::Relaxed);
@@ -580,9 +601,21 @@ impl Hub {
     /// abandoned session's state living in memory indefinitely until the
     /// process restarts; a real TTL-based eviction for long-dead sessions is
     /// a follow-up this pass doesn't cover, not something this fixes.
-    pub async fn remove_peer(&self, session_id: &str, user_id: &str) {
+    /// Closes one of `user_id`'s connections. Returns whether it was their
+    /// last, i.e. whether they've actually left; only then is their presence,
+    /// agent status and claims cleared.
+    pub async fn remove_peer(&self, session_id: &str, user_id: &str) -> bool {
         let mut map = self.inner.write().await;
-        if let Some(channel) = map.get_mut(session_id) {
+        let Some(channel) = map.get_mut(session_id) else {
+            return true;
+        };
+        let remaining = channel.connections.get(user_id).copied().unwrap_or(1).saturating_sub(1);
+        if remaining > 0 {
+            channel.connections.insert(user_id.to_string(), remaining);
+            return false;
+        }
+        channel.connections.remove(user_id);
+        {
             channel.peers.remove(user_id);
             channel.presence.remove(user_id);
             channel.agent_activity.remove(user_id);
@@ -591,6 +624,7 @@ impl Hub {
                 .last_seen_total_messages
                 .insert(user_id.to_string(), channel.total_messages);
         }
+        true
     }
 
     pub async fn peer_ids(&self, session_id: &str) -> Vec<String> {
@@ -1948,7 +1982,10 @@ async fn handle_socket(
     }
 
     state.hub.unsubscribe(&session_id, connection.id).await;
-    state.hub.remove_peer(&session_id, &user_id).await;
+    if !state.hub.remove_peer(&session_id, &user_id).await {
+        // Still connected elsewhere (another window or device): not gone.
+        return;
+    }
     // Their app is no longer reachable once they're gone.
     stop_preview(&state, &session_id, &user_id).await;
     state
