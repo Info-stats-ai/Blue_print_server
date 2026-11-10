@@ -8,7 +8,7 @@
 use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::{StatusCode, header};
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use chrono::Utc;
 use serde::Deserialize;
 
@@ -110,8 +110,46 @@ pub fn page(path: &str) -> Response {
             doc_page(doc_article(&path["/docs/".len()..]).unwrap_or(DOC_OVERVIEW))
         }
         path if path.starts_with("/docs/img/") => doc_image(&path["/docs/img/".len()..]),
+        path if path.starts_with("/docs/") || path.starts_with("/releases") || path.starts_with("/channel") => {
+            Redirect::permanent(legacy_doc_target(path)).into_response()
+        }
         _ => (StatusCode::NOT_FOUND, "Not found").into_response(),
     }
+}
+
+/// The app inherited links to Zed's docs layout, such as `/docs/linux`.
+/// Each goes to the closest page here instead of a dead end.
+fn legacy_doc_target(path: &str) -> &'static str {
+    const TARGETS: &[(&str, &str)] = &[
+        ("/docs/linux", "/docs/installation"),
+        ("/docs/windows", "/docs/installation"),
+        ("/docs/macos", "/docs/installation"),
+        ("/docs/getting-started", "/docs/getting-started"),
+        ("/docs/configuring-languages", "/docs/editing"),
+        ("/docs/languages", "/docs/editing"),
+        ("/docs/completions", "/docs/editing"),
+        ("/docs/editor", "/docs/editing"),
+        ("/docs/multibuffers", "/docs/editing"),
+        ("/docs/markdown", "/docs/editing"),
+        ("/docs/key-bindings", "/docs/settings"),
+        ("/docs/settings", "/docs/settings"),
+        ("/docs/themes", "/docs/settings"),
+        ("/docs/icon-themes", "/docs/settings"),
+        ("/docs/vim", "/docs/settings"),
+        ("/docs/telemetry", "/docs/settings-reference"),
+        ("/docs/tasks", "/docs/terminal-tasks"),
+        ("/docs/debugger", "/docs/terminal-tasks"),
+        ("/docs/repl", "/docs/terminal-tasks"),
+        ("/docs/git", "/docs/git"),
+        ("/docs/ai", "/docs/ai-setup"),
+        ("/docs/remote-development", "/docs/faq"),
+        ("/releases", "/download"),
+        ("/channel", "/"),
+    ];
+    TARGETS
+        .iter()
+        .find(|(prefix, _)| path == *prefix || path.starts_with(&format!("{prefix}/")) || path.starts_with(&format!("{prefix}.")))
+        .map_or("/docs", |(_, target)| target)
 }
 
 fn doc_article(slug: &str) -> Option<&'static str> {
@@ -302,7 +340,8 @@ mod tests {
             assert!(article.contains(&format!("data-page=\"/docs/{slug}\"")), "{slug}");
             assert_eq!(page(&format!("/docs/{slug}")).status(), StatusCode::OK);
         }
-        assert_eq!(page("/docs/nope").status(), StatusCode::NOT_FOUND);
+        // Unknown docs paths, such as old links from the app, go to the docs home.
+        assert_eq!(page("/docs/nope").headers()[header::LOCATION], "/docs");
     }
 
     async fn body(response: Response) -> String {
@@ -340,6 +379,24 @@ mod tests {
         assert_eq!(overview.matches("<article").count(), 1);
         assert!(overview.contains("<link rel=\"canonical\" href=\"https://i-ide.dev/docs\">"));
         assert!(!overview.contains("<small>Previous</small>"));
+    }
+
+    #[test]
+    fn old_zed_docs_links_land_on_a_real_page() {
+        for (old, new) in [
+            ("/docs/linux", "/docs/installation"),
+            ("/docs/languages/python", "/docs/editing"),
+            ("/docs/ai/external-agents", "/docs/ai-setup"),
+            ("/docs/getting-started.html", "/docs/getting-started"),
+            ("/docs/nightly/settings", "/docs"),
+            ("/releases", "/download"),
+        ] {
+            let response = page(old);
+            assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT, "{old}");
+            assert_eq!(response.headers()[header::LOCATION], new, "{old}");
+        }
+        assert_eq!(page("/docs/claims").status(), StatusCode::OK);
+        assert_eq!(page("/nope").status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
