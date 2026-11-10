@@ -6,7 +6,7 @@
   <li><strong>Plan.</strong> When you give the I-mode agent a task in Agent mode, the task becomes the run's goal.</li>
   <li><strong>Run.</strong> While the agent works, each step it takes belongs to the run: what it's thinking, what it did and what came back.</li>
   <li><strong>Finish.</strong> When the agent stops, the run shows how it ended and which files it changed. If you stop the AI yourself, the run shows as stopped.</li>
-  <li><strong>Review.</strong> Teammates mark a finished run <strong>Accept</strong> or <strong>Needs changes</strong>. You can't review your own agent's runs.</li>
+  <li><strong>Review.</strong> Teammates mark a finished run <strong>Accept</strong> or <strong>Needs changes</strong>. Needs changes asks for a short note on what should change, which is optional and shown on the run. You can't review your own agent's runs.</li>
   <li><strong>Remember.</strong> Every agent in the session sees reviewed runs. They build on accepted work and avoid repeating work that was sent back.</li>
 </ol>
 <h2>Reading a run</h2>
@@ -27,18 +27,19 @@
   <tr><td>Return arrow</td><td>Result: what came back.</td></tr>
   <tr><td>Terminal</td><td>A terminal run you chose to share.</td></tr>
 </tbody></table>
+<p>On your own runs, <strong>Waiting for review</strong> means your team can see the run and nobody has reviewed it yet. <strong>Only you can see this</strong>, with a lock, means your sharing was off or paused when it ran.</p>
 <p>Steps that don't belong to a run, such as terminal runs and edits from the Agent Panel, appear under <strong>Other agent steps</strong>.</p>
 <h2>Choose what you share</h2>
 <p>Select the people icon in the I-mode panel, then choose under <strong>Your agents' work</strong>. Your agents always see each other's work on your machine. These settings only control what reaches your team.</p>
 <table><thead><tr><th>Level</th><th>What your team sees</th></tr></thead><tbody>
-  <tr><td><strong>Off</strong></td><td>Nothing: no runs, no steps, and your messages to your own AI stay out of the team chat.</td></tr>
+  <tr><td><strong>Off</strong></td><td>Nothing: no runs, no steps, no "working on…" status, and your messages to your own AI stay out of the team chat.</td></tr>
   <tr><td><strong>Actions</strong> (default)</td><td>Your messages to your AI, plus the goal, status and changed files of each run and each action.</td></tr>
   <tr><td><strong>Actions and reasoning</strong></td><td>Also what the agent was thinking.</td></tr>
   <tr><td><strong>Everything</strong></td><td>Also the results, and your AI's full answers in the team chat.</td></tr>
 </tbody></table>
 <ul>
   <li><strong>Pause sharing</strong> stops sharing right away, without changing your level. While it's on, your messages to your AI stay out of the team chat too.</li>
-  <li><strong>Private paths…</strong> lists files and folders that are never shared, whatever your level is. Secret files such as <code>.env</code> are never shared either.</li>
+  <li><strong>Private paths…</strong> lists files and folders that are never shared, whatever your level is. Steps on those files are left out, and wherever one is named in shared text, such as a run's goal or your message to your AI, it shows as <code>[private]</code>. Secret files such as <code>.env</code> are never shared either.</li>
   <li><strong>Share terminal runs</strong> (off by default) shares the command, whether it passed or failed, and the last 25 lines of output when a task finishes.</li>
   <li><strong>Save shared steps to team memory</strong> (off by default) keeps your shared steps and runs, with their reviews, after the session ends. When it's off, they're only shown live and kept in memory for a short while.</li>
 </ul>

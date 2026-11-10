@@ -173,6 +173,9 @@ async def main():
     if runs:
         check("Its review survives too", runs[0]["reviews"] and runs[0]["reviews"][0]["verdict"] == "changes", runs[0])
         check("Its files survive too", runs[0]["files"] == ["src/tasks.rs", "tests/due.rs"], runs[0]["files"])
+    steps = snapshot.get("agent_steps", [])
+    check("Its remembered steps survive, still tied to the run",
+          any(step.get("run_id") == "run-1" and step.get("kind") == "plan" for step in steps), steps)
     await again.close()
     server.terminate()
     print(f"\n{'ALL PASSED' if not failures else str(len(failures)) + ' FAILED'}  (state in {STATE})")

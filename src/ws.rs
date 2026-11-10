@@ -1556,6 +1556,16 @@ impl Hub {
         }
     }
 
+    /// Restores remembered steps after a restart, unless live ones exist.
+    pub async fn seed_agent_steps_if_empty(&self, session_id: &str, steps: Vec<serde_json::Value>) {
+        let mut map = self.inner.write().await;
+        if let Some(channel) = map.get_mut(session_id)
+            && channel.agent_steps.is_empty()
+        {
+            channel.agent_steps = steps.into_iter().collect();
+        }
+    }
+
     pub async fn recent_agent_steps(&self, session_id: &str) -> Vec<serde_json::Value> {
         let map = self.inner.read().await;
         map.get(session_id)
@@ -1761,6 +1771,10 @@ async fn handle_socket(
     let tasks = state.hub.get_tasks(&session_id).await;
     let changes = state.hub.get_changes(&session_id).await;
     let agent_activity = state.hub.get_agent_activity(&session_id).await;
+    state
+        .hub
+        .seed_agent_steps_if_empty(&session_id, remembered_agent_steps(&state.pool, &session_id).await)
+        .await;
     let agent_steps = state.hub.recent_agent_steps(&session_id).await;
     state
         .hub
@@ -2228,6 +2242,34 @@ async fn remembered_agent_runs(pool: &sqlx::SqlitePool, session_id: &str) -> Vec
     runs
 }
 
+/// The latest steps people chose to keep, oldest first, shaped as broadcast.
+async fn remembered_agent_steps(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<serde_json::Value> {
+    let rows: Vec<(String, String, String, String, Option<String>, Option<String>, String)> = sqlx::query_as(
+        "SELECT user_id, agent, kind, text, path, run_id, created_at FROM agent_steps \
+         WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+    )
+    .bind(session_id)
+    .bind(RECENT_AGENT_STEPS as i64)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.into_iter()
+        .rev()
+        .map(|(user_id, agent, kind, text, path, run_id, at)| {
+            json!({
+                "type": "agent_step",
+                "user_id": user_id,
+                "agent": agent,
+                "kind": kind,
+                "text": text,
+                "path": path,
+                "run_id": run_id,
+                "at": at,
+            })
+        })
+        .collect()
+}
+
 async fn save_agent_run(pool: &sqlx::SqlitePool, session_id: &str, run: &AgentRun) {
     if !run.remember {
         return;
@@ -2496,7 +2538,7 @@ async fn handle_client_message(
             state.hub.broadcast(session_id, &step).await;
             if remember
                 && let Err(error) = sqlx::query(
-                    "INSERT INTO agent_steps (session_id, user_id, agent, kind, text, path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO agent_steps (session_id, user_id, agent, kind, text, path, run_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 )
                 .bind(session_id)
                 .bind(user_id)
@@ -2504,6 +2546,7 @@ async fn handle_client_message(
                 .bind(&kind)
                 .bind(&text)
                 .bind(&path)
+                .bind(&run_id)
                 .bind(at)
                 .execute(&state.pool)
                 .await
