@@ -139,6 +139,11 @@ struct SessionChannel {
     tasks: TaskBoard,
     // What each person's AI agent is doing right now, if anything.
     agent_activity: HashMap<String, AgentActivity>,
+    // The latest agent steps people shared, oldest first, for late joiners.
+    agent_steps: std::collections::VecDeque<serde_json::Value>,
+    // Per person: when their current one-second window started, and how
+    // many steps they've shared in it.
+    step_rate: HashMap<String, (Instant, u32)>,
     // What each person's agents are editing right now: user id -> claims.
     // One agent per definition; the first claim on overlapping code wins.
     claims: HashMap<String, Vec<FileClaim>>,
@@ -336,6 +341,34 @@ async fn owner_id_for_requests(state: &AppState, session_id: &str) -> Option<Str
 }
 
 #[cfg(test)]
+mod agent_step_tests {
+    use super::*;
+
+    #[test]
+    fn shared_steps_are_checked_and_trimmed() {
+        assert!(clean_agent_step("I-mode agent", "chatter", "hi", None).is_none());
+        assert!(clean_agent_step("I-mode agent", "action", "   ", None).is_none());
+        let long = "x".repeat(5_000);
+        let (agent, kind, text, path) = clean_agent_step("", "reasoning", &long, Some("  ")).unwrap();
+        assert_eq!((agent.as_str(), kind.as_str(), text.len(), path), ("agent", "reasoning", MAX_AGENT_STEP_CHARS, None));
+    }
+
+    #[tokio::test]
+    async fn a_burst_of_steps_is_capped_and_history_stays_short() {
+        let hub = Hub::new();
+        let _peer = hub.add_peer("s", "u").await;
+        let mut accepted = 0;
+        for index in 0..25 {
+            if hub.record_agent_step("s", "u", json!({"n": index})).await.is_some() {
+                accepted += 1;
+            }
+        }
+        assert_eq!(accepted, MAX_AGENT_STEPS_PER_SECOND);
+        assert_eq!(hub.recent_agent_steps("s").await.len(), MAX_AGENT_STEPS_PER_SECOND as usize);
+    }
+}
+
+#[cfg(test)]
 mod ai_budget_tests {
     use super::*;
 
@@ -403,6 +436,8 @@ impl Hub {
                 total_messages: 0,
                 last_seen_total_messages: HashMap::new(),
                 last_activity: Instant::now(),
+                agent_steps: std::collections::VecDeque::new(),
+                step_rate: HashMap::new(),
                 replica_authors: HashMap::new(),
                 agent_edits: HashSet::new(),
                 change_bases: HashMap::new(),
@@ -1330,6 +1365,34 @@ impl Hub {
         claims
     }
 
+    /// Records a shared agent step and returns it as broadcast, or `None` when
+    /// the sender is over the rate limit.
+    pub async fn record_agent_step(&self, session_id: &str, user_id: &str, step: serde_json::Value) -> Option<serde_json::Value> {
+        let mut map = self.inner.write().await;
+        let channel = map.get_mut(session_id)?;
+        let now = Instant::now();
+        let window = channel.step_rate.entry(user_id.to_string()).or_insert((now, 0));
+        if now.duration_since(window.0) >= Duration::from_secs(1) {
+            *window = (now, 0);
+        }
+        if window.1 >= MAX_AGENT_STEPS_PER_SECOND {
+            return None;
+        }
+        window.1 += 1;
+        channel.agent_steps.push_back(step.clone());
+        while channel.agent_steps.len() > RECENT_AGENT_STEPS {
+            channel.agent_steps.pop_front();
+        }
+        Some(step)
+    }
+
+    pub async fn recent_agent_steps(&self, session_id: &str) -> Vec<serde_json::Value> {
+        let map = self.inner.read().await;
+        map.get(session_id)
+            .map(|channel| channel.agent_steps.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
     pub async fn get_agent_activity(&self, session_id: &str) -> HashMap<String, AgentActivity> {
         let map = self.inner.read().await;
         map.get(session_id)
@@ -1528,6 +1591,7 @@ async fn handle_socket(
     let tasks = state.hub.get_tasks(&session_id).await;
     let changes = state.hub.get_changes(&session_id).await;
     let agent_activity = state.hub.get_agent_activity(&session_id).await;
+    let agent_steps = state.hub.recent_agent_steps(&session_id).await;
     let claims = state.hub.get_claims(&session_id).await;
     let catch_up = state.hub.catch_up_digest(&session_id, &user_id).await;
     let presence = state.hub.get_presence(&session_id).await;
@@ -1591,6 +1655,7 @@ async fn handle_socket(
         "tasks": tasks,
         "changes": changes,
         "agent_activity": agent_activity,
+        "agent_steps": agent_steps,
         "claims": claims,
         "catch_up": catch_up,
         "presence": presence,
@@ -1859,6 +1924,35 @@ enum ClientMessage {
         #[serde(default)]
         task_id: Option<String>,
     },
+    // One step of an agent's work, at the level its user chose to share.
+    // `remember` keeps it for team memory; otherwise it's only shown live.
+    AgentStep {
+        agent: String,
+        kind: String,
+        text: String,
+        #[serde(default)]
+        path: Option<String>,
+        #[serde(default)]
+        remember: bool,
+    },
+}
+
+const AGENT_STEP_KINDS: &[&str] = &["plan", "reasoning", "action", "result"];
+const MAX_AGENT_STEP_CHARS: usize = 2_000;
+const MAX_AGENT_STEPS_PER_SECOND: u32 = 10;
+const RECENT_AGENT_STEPS: usize = 100;
+
+/// Checks a shared step's fields and trims them to size; `None` drops it.
+fn clean_agent_step(agent: &str, kind: &str, text: &str, path: Option<&str>) -> Option<(String, String, String, Option<String>)> {
+    if !AGENT_STEP_KINDS.contains(&kind) || text.trim().is_empty() {
+        return None;
+    }
+    let agent: String = agent.trim().chars().take(60).collect();
+    let text: String = text.trim().chars().take(MAX_AGENT_STEP_CHARS).collect();
+    let path = path
+        .map(|path| path.trim().chars().take(400).collect::<String>())
+        .filter(|path| !path.is_empty());
+    Some((if agent.is_empty() { "agent".to_string() } else { agent }, kind.to_string(), text, path))
 }
 
 /// Parses an inbound text frame and dispatches it. The sender's identity for
@@ -2035,6 +2129,38 @@ async fn handle_client_message(
                     &json!({"type": "agent_activity", "user_id": user_id, "activity": activity}),
                 )
                 .await;
+            None
+        }
+        ClientMessage::AgentStep { agent, kind, text, path, remember } => {
+            let (agent, kind, text, path) = clean_agent_step(&agent, &kind, &text, path.as_deref())?;
+            let at = chrono::Utc::now();
+            let step = json!({
+                "type": "agent_step",
+                "user_id": user_id,
+                "agent": agent,
+                "kind": kind,
+                "text": text,
+                "path": path,
+                "at": at.to_rfc3339(),
+            });
+            let step = state.hub.record_agent_step(session_id, user_id, step).await?;
+            state.hub.broadcast(session_id, &step).await;
+            if remember
+                && let Err(error) = sqlx::query(
+                    "INSERT INTO agent_steps (session_id, user_id, agent, kind, text, path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                )
+                .bind(session_id)
+                .bind(user_id)
+                .bind(&agent)
+                .bind(&kind)
+                .bind(&text)
+                .bind(&path)
+                .bind(at)
+                .execute(&state.pool)
+                .await
+            {
+                eprintln!("ws: saving an agent step for {session_id} failed: {error}");
+            }
             None
         }
         ClientMessage::CursorMoved { path, row } => {
