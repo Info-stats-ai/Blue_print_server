@@ -9,6 +9,7 @@ mod errors;
 mod github;
 mod handlers;
 mod listen;
+mod memory;
 mod models;
 mod oauth;
 mod preview;
@@ -171,6 +172,7 @@ async fn main() {
         .route("/sessions/{id}/join", post(handlers::join_session))
         .route("/sessions/{id}/invite", post(handlers::invite_to_session))
         .route("/sessions/{id}/join-requests/{user_id}", put(handlers::answer_join_request))
+        .route("/sessions/{id}/memory", get(memory::search_handler))
         .route(
             "/contracts",
             post(handlers::create_contract).get(handlers::list_contracts),

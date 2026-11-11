@@ -105,3 +105,16 @@ elif command == "work":
     asyncio.run(work(args[0], int(args[1])))
 elif command == "review":
     asyncio.run(review(args[0], args[1], args[2], args[3], args[4] if len(args) > 4 else ""))
+
+
+async def pin(name, text):
+    ws, _ = await connect(name)
+    await ws.send(json.dumps({"type": "chat", "text": "Decision: " + text}))
+    await ws.send(json.dumps({"type": "pin_decision", "text": text}))
+    await asyncio.sleep(1)
+    await ws.close()
+    print(f"{name} pinned: {text}")
+
+
+if command == "pin":
+    asyncio.run(pin(args[0], args[1]))

@@ -17,7 +17,7 @@ use crate::models::{
 };
 use crate::AppState;
 
-async fn require_member(
+pub(crate) async fn require_member(
     state: &AppState,
     session_id: &str,
     user_id: &str,

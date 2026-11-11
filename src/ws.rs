@@ -270,6 +270,9 @@ pub struct AgentRun {
     pub reviews: Vec<RunReview>,
     pub started_at: String,
     pub updated_at: String,
+    /// Tokens the run used, when its owner shares that.
+    #[serde(default)]
+    pub tokens: Option<u64>,
     /// Kept in team memory; not sent to clients.
     #[serde(skip)]
     pub remember: bool,
@@ -1535,6 +1538,7 @@ impl Hub {
             existing.status = run.status;
             existing.files = run.files;
             existing.summary = run.summary.or(existing.summary);
+            existing.tokens = run.tokens.or(existing.tokens);
             existing.updated_at = run.updated_at;
             existing.remember |= run.remember;
             run = existing;
@@ -1815,6 +1819,7 @@ async fn handle_socket(
         .seed_agent_runs_if_empty(&session_id, remembered_agent_runs(&state.pool, &session_id).await)
         .await;
     let agent_runs = state.hub.recent_agent_runs(&session_id).await;
+    let decisions = crate::memory::decisions(&state.pool, &session_id).await;
     let claims = state.hub.get_claims(&session_id).await;
     let catch_up = state.hub.catch_up_digest(&session_id, &user_id).await;
     let presence = state.hub.get_presence(&session_id).await;
@@ -1880,6 +1885,7 @@ async fn handle_socket(
         "agent_activity": agent_activity,
         "agent_steps": agent_steps,
         "agent_runs": agent_runs,
+        "decisions": decisions,
         "claims": claims,
         "catch_up": catch_up,
         "presence": presence,
@@ -2177,6 +2183,8 @@ enum ClientMessage {
         summary: Option<String>,
         #[serde(default)]
         remember: bool,
+        #[serde(default)]
+        tokens: Option<u64>,
     },
     // A teammate's verdict on a finished run.
     AgentRunReview {
@@ -2186,6 +2194,9 @@ enum ClientMessage {
         #[serde(default)]
         note: Option<String>,
     },
+    // Pin a line from the chat as a team decision; every agent gets these.
+    PinDecision { text: String },
+    UnpinDecision { id: i64 },
 }
 
 const AGENT_RUN_STATUSES: &[&str] = &["running", "done", "failed", "stopped"];
@@ -2245,13 +2256,14 @@ fn clean_agent_run(
         reviews: Vec::new(),
         started_at: now.clone(),
         updated_at: now,
+        tokens: None,
         remember,
     })
 }
 
 async fn remembered_agent_runs(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<AgentRun> {
-    let rows: Vec<(String, String, String, String, String, String, Option<String>, String, String, String)> = sqlx::query_as(
-        "SELECT user_id, run_id, agent, goal, status, files, summary, reviews, started_at, updated_at \
+    let rows: Vec<(String, String, String, String, String, String, Option<String>, String, String, String, Option<i64>)> = sqlx::query_as(
+        "SELECT user_id, run_id, agent, goal, status, files, summary, reviews, started_at, updated_at, tokens \
          FROM agent_runs WHERE session_id = ? ORDER BY updated_at DESC LIMIT ?",
     )
     .bind(session_id)
@@ -2261,7 +2273,7 @@ async fn remembered_agent_runs(pool: &sqlx::SqlitePool, session_id: &str) -> Vec
     .unwrap_or_default();
     let mut runs: Vec<AgentRun> = rows
         .into_iter()
-        .map(|(user_id, run_id, agent, goal, status, files, summary, reviews, started_at, updated_at)| AgentRun {
+        .map(|(user_id, run_id, agent, goal, status, files, summary, reviews, started_at, updated_at, tokens)| AgentRun {
             user_id,
             run_id,
             agent,
@@ -2272,6 +2284,7 @@ async fn remembered_agent_runs(pool: &sqlx::SqlitePool, session_id: &str) -> Vec
             reviews: serde_json::from_str(&reviews).unwrap_or_default(),
             started_at,
             updated_at,
+            tokens: tokens.map(|tokens| tokens as u64),
             remember: true,
         })
         .collect();
@@ -2312,11 +2325,11 @@ async fn save_agent_run(pool: &sqlx::SqlitePool, session_id: &str, run: &AgentRu
         return;
     }
     let result = sqlx::query(
-        "INSERT INTO agent_runs (session_id, user_id, run_id, agent, goal, status, files, summary, reviews, started_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
+        "INSERT INTO agent_runs (session_id, user_id, run_id, agent, goal, status, files, summary, reviews, started_at, updated_at, tokens) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) \
          ON CONFLICT (session_id, user_id, run_id) DO UPDATE SET \
          status = excluded.status, files = excluded.files, summary = excluded.summary, \
-         reviews = excluded.reviews, updated_at = excluded.updated_at",
+         reviews = excluded.reviews, updated_at = excluded.updated_at, tokens = excluded.tokens",
     )
     .bind(session_id)
     .bind(&run.user_id)
@@ -2329,6 +2342,7 @@ async fn save_agent_run(pool: &sqlx::SqlitePool, session_id: &str, run: &AgentRu
     .bind(serde_json::to_string(&run.reviews).unwrap_or_else(|_| "[]".into()))
     .bind(&run.started_at)
     .bind(&run.updated_at)
+    .bind(run.tokens.map(|tokens| tokens as i64))
     .execute(pool)
     .await;
     if let Err(error) = result {
@@ -2530,8 +2544,25 @@ async fn handle_client_message(
                 .await;
             None
         }
-        ClientMessage::AgentRun { run_id, agent, goal, status, files, summary, remember } => {
-            let run = clean_agent_run(user_id, &run_id, &agent, &goal, &status, &files, summary.as_deref(), remember)?;
+        ClientMessage::PinDecision { text } => {
+            match crate::memory::pin(&state.pool, session_id, user_id, &text).await {
+                Ok(()) => {
+                    let decisions = crate::memory::decisions(&state.pool, session_id).await;
+                    state.hub.broadcast(session_id, &json!({"type": "decisions", "decisions": decisions})).await;
+                    None
+                }
+                Err(reason) => Some(json!({"type": "error", "message": reason})),
+            }
+        }
+        ClientMessage::UnpinDecision { id } => {
+            crate::memory::unpin(&state.pool, session_id, id).await;
+            let decisions = crate::memory::decisions(&state.pool, session_id).await;
+            state.hub.broadcast(session_id, &json!({"type": "decisions", "decisions": decisions})).await;
+            None
+        }
+        ClientMessage::AgentRun { run_id, agent, goal, status, files, summary, remember, tokens } => {
+            let mut run = clean_agent_run(user_id, &run_id, &agent, &goal, &status, &files, summary.as_deref(), remember)?;
+            run.tokens = tokens;
             let run = state.hub.record_agent_run(session_id, run).await?;
             state.hub.broadcast(session_id, &json!({"type": "agent_run", "run": run})).await;
             save_agent_run(&state.pool, session_id, &run).await;

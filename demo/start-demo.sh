@@ -70,7 +70,7 @@ LEAD_TOKEN=${TOKENS[0]}
 
 CREATED=$(curl -s -X POST "$BASE/sessions" -H "authorization: Bearer $LEAD_TOKEN" \
   -H 'content-type: application/json' \
-  -d '{"name":"Bookshelf","goal":"Add due dates and fines, search, saving to disk, and tests","has_leader":true}')
+  -d "{\"name\":\"$(basename "$PROJECT" | sed "s/^project-//")\",\"goal\":\"Build it together\",\"has_leader\":true}")
 SESSION=$(echo "$CREATED" | json 'd["session"]["id"]')
 INVITE=$(echo "$CREATED" | json 'd["invite_token"]')
 for index in "${!PEOPLE[@]}"; do
