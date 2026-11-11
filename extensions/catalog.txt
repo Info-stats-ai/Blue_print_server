@@ -1,0 +1,41 @@
+# Extensions I-IDE's store offers, by their id in the community extension
+# index. Languages first: what VS Code users most often reach for beyond the
+# languages I-IDE has built in.
+java
+kotlin
+scala
+csharp
+php
+ruby
+swift
+dart
+elixir
+erlang
+haskell
+ocaml
+lua
+zig
+julia
+r
+perl
+html
+vue
+svelte
+astro
+sql
+graphql
+prisma
+toml
+xml
+dockerfile
+docker-compose
+terraform
+nix
+make
+latex
+proto
+log
+# Themes and icons
+catppuccin
+catppuccin-icons
+material-icon-theme

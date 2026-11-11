@@ -43,6 +43,10 @@ fi
 
 cd "$SERVER_DIR"
 if [ -n "$IDE_ANTHROPIC_KEY" ]; then export ANTHROPIC_API_KEY="$IDE_ANTHROPIC_KEY"; fi
+# A throwaway publish token for this local demo only, so built extension
+# packages (extensions/publish.py build) can be loaded into its store.
+EXTENSIONS_PUBLISH_TOKEN="demo-local-$(uuidgen)"
+export EXTENSIONS_PUBLISH_TOKEN
 DATABASE_URL="sqlite:$STATE/demo.db" JWT_SECRET=demo-local-only PORT=$PORT \
   nohup "$SERVER" >"$STATE/server.log" 2>&1 </dev/null &
 unset ANTHROPIC_API_KEY IDE_ANTHROPIC_KEY
@@ -53,6 +57,11 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 curl -s -o /dev/null "$BASE/sessions" || { echo "Server didn't start; see $STATE/server.log"; exit 1; }
+if [ -d "$HOME/.cache/i-ide-extensions/out" ]; then
+  python3 -I "$SERVER_DIR/extensions/publish.py" upload "$BASE" >"$STATE/extensions.log" 2>&1 || true
+  echo "Extension store: $(grep -c '^published' "$STATE/extensions.log" || true) extensions loaded"
+fi
+unset EXTENSIONS_PUBLISH_TOKEN
 
 json() { python3 -I -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
 register() {
@@ -134,6 +143,7 @@ JSON
   open -n "$APP" \
     --env BLUEPRINT_HTTP_URL="$BASE" --env BLUEPRINT_SERVER_URL="ws://127.0.0.1:$PORT/ws" \
     --env BLUEPRINT_DEV_TOKEN="$token" --env BLUEPRINT_DEV_USER_ID="$user_id" \
+    --env I_IDE_API_URL="$BASE/api" \
     --stdout "$home/ide.log" --stderr "$home/ide.log" \
     --args --user-data-dir "$home/data" "$project_dir" "i-ide://i-mode/join/$SESSION.$INVITE"
   # `open` returns before the app's pid is known; find it by its data dir.

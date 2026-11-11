@@ -22,8 +22,29 @@
   <li>Select <strong>Share</strong>.</li>
 </ol>
 <p>Files listed in <code>.gitignore</code> are skipped. In a <strong>You lead</strong> session, only the leader can do this.</p>
-<h2>Sync your agent's work</h2>
-<p>When an agent changes files, a banner offers <strong>Sync to team</strong>. Select it to send those changes to your teammates.</p>
+<h2 id="sync-your-agents-work">Choose how files move</h2>
+<p>The first time you're in a session, the I-mode panel asks two questions. Nothing moves on its own until you answer.</p>
+<p><strong>Send my changes:</strong></p>
+<table><thead><tr><th>Choice</th><th>What's sent, and when</th></tr></thead><tbody>
+  <tr><td><strong>On every save</strong></td><td>Any project file you or your agents create or change, a moment after it's saved.</td></tr>
+  <tr><td><strong>When an agent finishes</strong></td><td>The files an agent changed, when its run finishes. This covers both your AIs: the Agent Panel and My AI.</td></tr>
+  <tr><td><strong>When I press Sync</strong></td><td>Nothing, until you select <strong>Sync to team</strong>.</td></tr>
+</tbody></table>
+<p><strong>Teammates' changes:</strong></p>
+<ul>
+  <li><strong>Add automatically</strong>: files land in your copy right away. A file you have unsaved edits to is kept as yours.</li>
+  <li><strong>Review first</strong>: each file waits in the chat as a card. Select <strong>View changes</strong>, then <strong>Use theirs</strong> to take it.</li>
+</ul>
+<p>Whichever you choose:</p>
+<ul>
+  <li>Files ignored by Git, your <a href="/docs/agent-runs#choose-what-you-share">private paths</a> and the protected files below are never sent.</li>
+  <li>Nothing is sent on its own while sharing is paused.</li>
+  <li>A run you stopped, or one that failed, isn't sent with <strong>When an agent finishes</strong>: its files may be half done. A banner offers <strong>Sync to team</strong> for those.</li>
+  <li>Deleting a file isn't sent; tell your team instead.</li>
+</ul>
+<p>To change your answers, select the people icon, then <strong>AI &amp; sharing</strong>.</p>
+<h2>What your AIs learn when a file arrives</h2>
+<p>When a teammate's file reaches you, both your AIs are told in their next live update: who sent it, what changed, and the functions and classes it defines. If it's still waiting for your review, they're told it isn't in your copy yet. That way they use your teammate's real code instead of guessing at it.</p>
 <h2>Files that are never synced</h2>
 <p>To protect your secrets, agents and teammates can't read or write files that usually hold credentials:</p>
 <ul>

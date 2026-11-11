@@ -32,6 +32,7 @@ const DOC_PAGES: &[(&str, &str)] = &[
     ("editing", include_str!("../site/docs/editing.html")),
     ("navigation", include_str!("../site/docs/navigation.html")),
     ("terminal-tasks", include_str!("../site/docs/terminal-tasks.html")),
+    ("extensions", include_str!("../site/docs/extensions.html")),
     ("git", include_str!("../site/docs/git.html")),
     ("settings", include_str!("../site/docs/settings.html")),
     ("i-mode", include_str!("../site/docs/i-mode.html")),

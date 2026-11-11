@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>I-IDE: the code editor for teams working with AI</title>
-<meta name="description" content="Everyone can see who is working on what, and each AI agent claims the function it's changing, so collisions stop before they become merge conflicts.">
+<meta name="description" content="Every AI on your team, yours and your teammates', works from one live picture: what each agent is doing, what the team decided, and the code that just landed.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
 <style>{{CSS}}</style>
 </head>
@@ -16,7 +16,7 @@
     <canvas id="hero-art" aria-hidden="true"></canvas>
     <div class="h-hero-copy">
       <h1>The code editor for teams<br><span class="dim">working with AI agents</span></h1>
-      <p>See who is working on what, split the work up front, and stop<br class="wide"> agents from changing the same function at once.</p>
+      <p>Your AI, your teammates and their AIs work from one live picture:<br class="wide"> what each agent is doing, what you decided, and the code that just landed.</p>
       <div class="h-actions">
         <a class="pill" href="/download">Join the waitlist <span aria-hidden="true">»</span></a>
         <a class="pill solid" href="/docs">Read the docs</a>
@@ -27,85 +27,84 @@
 
   <section class="h-section" id="product">
     <div class="h-head">
-      <h2>One session.<br><span class="dim">Everyone's work in view.</span></h2>
-      <p>People and their agents share a goal, a chat and a live picture of who holds what. Choose a view below to see how a session works.</p>
+      <h2>One session.<br><span class="dim">Every AI on the same page.</span></h2>
+      <p>Each person has two AIs: the Agent Panel on the left and My AI on the right. In a session, all of them share context, code and review. Choose a view below.</p>
     </div>
-    <div class="app" data-app data-view="claims">
-      <div class="app-bar"><span class="app-dot"></span><span class="app-dot"></span><span class="app-dot"></span><span class="app-title">Add task reminders · example session</span></div>
+    <div class="app" data-app data-view="context">
+      <div class="app-bar"><span class="app-dot"></span><span class="app-dot"></span><span class="app-dot"></span><span class="app-title">Shoplite checkout · example session</span></div>
       <div class="app-body">
         <div class="app-side" aria-hidden="true">
           <b>I-mode</b>
-          <span data-side="claims">Chat</span>
-          <span data-side="tasks">Tasks</span>
-          <span data-side="team">Team</span>
+          <span data-side="context">Live context</span>
+          <span data-side="files">Files</span>
+          <span data-side="review">Agent runs</span>
           <small>People</small>
           <span class="who a">Alice</span>
           <span class="who b">Bob</span>
         </div>
         <div class="app-main">
-          <div class="view" data-show="claims">
-            <div class="tl-head"><span>tasks.py</span><span class="tl-note">Who holds each function right now</span></div>
-            <div class="tl-row"><code>complete_task</code><span class="tl-track"><i class="hold a" style="left:6%;width:62%">Alice's agent</i></span></div>
-            <div class="tl-row"><code>add_task</code><span class="tl-track"><i class="hold b" style="left:24%;width:58%">Bob's agent</i></span></div>
-            <div class="tl-row"><code>remind_at</code><span class="tl-track"><i class="hold a" style="left:44%;width:44%">Alice's agent</i></span></div>
-            <div class="tl-row"><code>send_reminder</code><span class="tl-track"><i class="hold b" style="left:68%;width:28%">Bob's agent</i></span></div>
-            <p class="tl-event"><strong>Collision avoided:</strong> Bob's agent stepped back from complete_task; Alice's agent is already changing it.</p>
+          <div class="view" data-show="context">
+            <div class="tl-head"><span>What Alice's AI sees before each step</span><span class="tl-note">Live update</span></div>
+            <div class="msg"><b>Pinned decision</b><span>Order ids look like ORD-0001.</span></div>
+            <div class="msg"><b>Bob's agent</b><span>Working on the checkout endpoint; holds cart.py › checkout.</span></div>
+            <div class="msg"><b>New from Bob</b><span>inventory.py is in your copy. Defines reserve() and release().</span></div>
+            <div class="msg"><b>Alice's other AI</b><span>Agent Panel is editing money.py › to_cents.</span></div>
+            <p class="tl-event"><strong>No guessing:</strong> the AI calls Bob's real reserve() instead of writing a stand-in.</p>
           </div>
-          <div class="view" data-show="tasks" hidden>
-            <div class="tl-head"><span>Task board</span><span class="tl-note">One owner per task</span></div>
-            <div class="task"><span class="who a">Alice</span><span>Store a reminder time on each task</span><em>In progress</em></div>
-            <div class="task"><span class="who b">Bob</span><span>Add the reminder form</span><em>In progress</em></div>
-            <div class="task"><span class="who a">Alice</span><span>Send reminders when they're due</span><em>Up next</em></div>
-            <div class="task"><span class="who b">Bob</span><span>Write tests for reminders</span><em>Up next</em></div>
+          <div class="view" data-show="files" hidden>
+            <div class="tl-head"><span>How should files move in this team?</span><span class="tl-note">Asked once</span></div>
+            <div class="rule"><span>Send my changes</span><em class="on">When an agent finishes</em></div>
+            <div class="rule"><span>Teammates' changes</span><em class="on">Review first</em></div>
+            <div class="rule"><span>Never sent</span><em>.env, keys, private paths</em></div>
+            <div class="task"><span class="who b">Bob</span><span>inventory.py arrived · +42 −3</span><em>Use theirs</em></div>
           </div>
-          <div class="view" data-show="team" hidden>
-            <div class="tl-head"><span>Team</span><span class="tl-note">Live in the session</span></div>
-            <div class="task"><span class="who a">Alice</span><span>Editing tasks.py</span><em>Agent working</em></div>
-            <div class="task"><span class="who b">Bob</span><span>Editing reminders.py</span><em>Agent working</em></div>
-            <div class="task"><span class="who">Changed</span><span>3 files this session</span><em>Open file</em></div>
-            <div class="task"><span class="who">Caught</span><span>1 conflict before it landed</span><em>This session</em></div>
+          <div class="view" data-show="review" hidden>
+            <div class="tl-head"><span>Agent runs</span><span class="tl-note">Accept or send back</span></div>
+            <div class="task"><span class="who a">Alice</span><span>Money helpers · 3 files · 12k tokens</span><em>Accepted</em></div>
+            <div class="task"><span class="who b">Bob</span><span>Checkout endpoint · 2 files</span><em>Sent back: use ORD ids</em></div>
+            <div class="task"><span class="who b">Bob</span><span>Fix this: rerun with Carol's note</span><em>Running</em></div>
           </div>
         </div>
       </div>
     </div>
     <div class="h-tabs" role="tablist" aria-label="Session views">
-      <button type="button" role="tab" aria-selected="true" data-tab="claims"><b>Claim by function.</b> Agents reserve what they change, so two can share a file.</button>
-      <button type="button" role="tab" aria-selected="false" data-tab="tasks"><b>Split the work.</b> Turn your discussion into tasks with one owner each.</button>
-      <button type="button" role="tab" aria-selected="false" data-tab="team"><b>See the team.</b> Know who is active, what changed and what was caught.</button>
+      <button type="button" role="tab" aria-selected="true" data-tab="context"><b>Shared context.</b> Every AI gets a short live note at each step: decisions, who's doing what, new code.</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="files"><b>Files move with permission.</b> Choose what's sent on its own and what waits for your review.</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="review"><b>Review agent work.</b> Accept a run, or send it back with a note the agent acts on.</button>
     </div>
   </section>
 
   <section class="h-section" id="features">
     <div class="h-head">
       <h2>Built for shared code.<br><span class="dim">Careful with it too.</span></h2>
-      <p>The tools a team needs once several agents are writing code in the same project at the same time.</p>
+      <p>What keeps several agents from getting in each other's way, and keeps you in control.</p>
     </div>
     <div class="bento">
       <figure class="tile wide-tile">
         <div class="tile-art"><div class="claim-sim" data-sim></div></div>
-        <figcaption><b>Function claims.</b> Try it: act as an agent and claim a function, then compare with file locks.</figcaption>
+        <figcaption><b>Function claims.</b> Agents reserve the function they're changing, so two can work in one file. Try it, then compare with file locks.</figcaption>
       </figure>
       <figure class="tile">
         <div class="tile-art list">
-          <div class="req"><span>bob@example.com wants to join</span><em>Decline</em><em class="on">Approve</em></div>
+          <div class="msg"><b>Dave pinned</b><span>Out-of-stock errors say "Out of stock: name".</span></div>
+          <div class="msg"><b>Bob's agent, mid-run</b><span>Switched to the pinned wording.</span></div>
+        </div>
+        <figcaption><b>Pinned decisions.</b> Pin a chat message and every agent follows it, even one already running.</figcaption>
+      </figure>
+      <figure class="tile">
+        <div class="tile-art list">
+          <div class="rule"><span>Sharing level</span><em>Actions</em></div>
+          <div class="rule"><span>Private paths</span><em>secrets/, notes/</em></div>
+          <div class="rule"><span>Pause sharing</span><em>Off</em></div>
+        </div>
+        <figcaption><b>You choose what's shared.</b> From nothing to everything, with private paths that never leave your machine.</figcaption>
+      </figure>
+      <figure class="tile">
+        <div class="tile-art list">
           <div class="req"><span>sam@example.com wants to join</span><em>Decline</em><em class="on">Approve</em></div>
+          <div class="rule"><span>Agent commands</span><em>Run, deny or always run</em></div>
         </div>
-        <figcaption><b>Owner approval.</b> An invite link only lets someone ask. The session owner lets them in.</figcaption>
-      </figure>
-      <figure class="tile">
-        <div class="tile-art list">
-          <div class="rule"><span>Shared AI spend</span><em>About $2 a day</em></div>
-          <div class="rule"><span>Shared previews</span><em>2 hours at most</em></div>
-          <div class="rule"><span>Agent commands</span><em>Allow or deny</em></div>
-        </div>
-        <figcaption><b>Built-in limits.</b> Spending, previews and agent commands stay within bounds.</figcaption>
-      </figure>
-      <figure class="tile">
-        <div class="tile-art list">
-          <div class="msg"><b>Team agent</b><span>You agreed Bob owns the form, but both of you mentioned it. Worth confirming.</span></div>
-          <div class="msg"><b>Reference updated</b><span>Saved the plan your team just agreed on.</span></div>
-        </div>
-        <figcaption><b>A team agent that listens.</b> It flags clashes and records decisions, and stays quiet otherwise.</figcaption>
+        <figcaption><b>Owner approval and limits.</b> Invites only let people ask, and agents' commands wait for you.</figcaption>
       </figure>
       <figure class="tile">
         <div class="tile-art list">
@@ -143,7 +142,7 @@
 
   <section class="h-final">
     <h2>Stop untangling your agents.<br><span class="dim">Let them share the work.</span></h2>
-    <p>We're looking for small teams already using AI agents on a shared codebase.</p>
+    <p>We're looking for small teams already building with AI agents on a shared codebase.</p>
     <div class="h-actions">
       <a class="pill" href="/download">Join the waitlist <span aria-hidden="true">»</span></a>
       <a class="pill solid" href="/docs/tutorial">See the tutorial</a>
@@ -152,11 +151,10 @@
 </main>
 <footer class="h-footer">
   <div class="h-foot-brand">
-    <p>The code editor for teams working with AI agents.</p>
+    <p>Built on Zed's open-source editor. Fast, native and light on memory.</p>
   </div>
-  <div><h3>Product</h3><a href="/#product">Overview</a><a href="/#features">Features</a><a href="/#benchmarks">Benchmarks</a><a href="/download">Download</a></div>
-  <div><h3>Docs</h3><a href="/docs/getting-started">Getting started</a><a href="/docs/tutorial">Tutorial</a><a href="/docs/troubleshooting">Troubleshooting</a></div>
-  <div><h3>Trust</h3><a href="/docs/security">Security and data</a><a href="/docs/limits">AI limits</a><a href="/auth/signin">Sign in</a></div>
+  <div><h3>Docs</h3><a href="/docs/getting-started">Getting started</a><a href="/docs/tutorial">Tutorial</a><a href="/docs/extensions">Extensions</a><a href="/docs/troubleshooting">Troubleshooting</a></div>
+  <div><h3>Trust</h3><a href="/docs/security">Security and data</a><a href="/docs/limits">AI limits</a><a href="/docs/agent-runs#choose-what-you-share">What you share</a></div>
   <p class="h-foot-note">I-IDE is in private development. Product names are trademarks of their owners. I-IDE isn't affiliated with or endorsed by them.</p>
 </footer>
 <script>{{SIM}}</script>
@@ -171,7 +169,7 @@
     app.querySelectorAll("[data-side]").forEach(function (item) { item.classList.toggle("on", item.dataset.side === view); });
   }
   tabs.forEach(function (tab) { tab.addEventListener("click", function () { select(tab.dataset.tab); }); });
-  select("claims");
+  select("context");
 
   // Hero art: lines that fan out at the top and bottom and pinch to a stem, an I drawn from many paths.
   var canvas = document.getElementById("hero-art");

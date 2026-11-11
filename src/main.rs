@@ -6,6 +6,7 @@ mod crdt;
 mod db;
 mod email;
 mod errors;
+mod extensions;
 mod github;
 mod handlers;
 mod listen;
@@ -162,7 +163,18 @@ async fn main() {
         .route("/ws", get(ws::ws_handler))
         .route("/github/webhook", post(github::webhook))
         .route("/join/{id}", get(github::join_page))
-        .route("/auth/signin", get(site::signin));
+        .route("/auth/signin", get(site::signin))
+        // The extension store, in the shape the IDE's extension host expects.
+        .route("/api/extensions", get(extensions::search))
+        .route("/api/extensions/updates", get(extensions::updates))
+        .route(
+            "/api/extensions/{id}",
+            get(extensions::versions)
+                .post(extensions::publish)
+                .layer(axum::extract::DefaultBodyLimit::max(extensions::MAX_ARCHIVE_BYTES + 1024)),
+        )
+        .route("/api/extensions/{id}/download", get(extensions::download_latest))
+        .route("/api/extensions/{id}/{version}/download", get(extensions::download_version));
 
     let protected_routes = Router::new()
         .route(

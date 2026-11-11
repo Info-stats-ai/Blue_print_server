@@ -273,7 +273,7 @@ footer { border-top: 1px solid var(--line); padding-block: 24px 40px; font-size:
 .h-note { margin-top: 20px; max-width: 48em; font-size: .875rem; color: var(--muted); }
 .h-final { position: relative; z-index: 2; display: grid; gap: 22px; justify-items: center; text-align: center; padding: 140px 24px; border-top: 1px solid var(--line); background: radial-gradient(ellipse 50% 45% at 50% 100%, #2dd4bf1f, #0000 100%); }
 .h-final p { color: var(--muted); }
-.h-footer { position: relative; z-index: 2; display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: 32px; max-width: 1240px; margin-inline: auto; padding: 56px clamp(24px, 5vw, 56px) 40px; border-top: 1px solid var(--line); font-size: .9375rem; color: var(--muted); }
+.h-footer { position: relative; z-index: 2; display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 32px; max-width: 1240px; margin-inline: auto; padding: 56px clamp(24px, 5vw, 56px) 40px; border-top: 1px solid var(--line); font-size: .9375rem; color: var(--muted); }
 .h-footer h3 { color: var(--fg); font-size: .875rem; font-weight: 500; margin-bottom: 10px; }
 .h-footer a { display: block; padding-block: 4px; text-decoration: none; }
 .h-footer a:hover { color: var(--fg); }
