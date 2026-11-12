@@ -2283,6 +2283,16 @@ enum ClientMessage {
     // Pin a line from the chat as a team decision; every agent gets these.
     PinDecision { text: String },
     UnpinDecision { id: i64 },
+    // "I received this file": whether it is now in the sender's copy or
+    // waiting for their review. Lets everyone see who has which version.
+    FileAck { path: String, applied: bool },
+    // What a saved-but-unsent file defines (signatures only, never its
+    // body), so teammates' AIs can build against it without waiting.
+    FilePreview {
+        path: String,
+        #[serde(default)]
+        outline: Vec<String>,
+    },
 }
 
 const AGENT_RUN_STATUSES: &[&str] = &["running", "done", "failed", "stopped"];
@@ -2640,6 +2650,36 @@ async fn handle_client_message(
                     &json!({"type": "agent_activity", "user_id": user_id, "activity": activity}),
                 )
                 .await;
+            None
+        }
+        ClientMessage::FilePreview { path, outline } => {
+            if crate::guard::is_safe_relative_path(&path) && !crate::guard::is_sensitive_path(&path) {
+                let outline: Vec<String> = outline
+                    .iter()
+                    .take(40)
+                    .map(|line| crate::guard::redact_secrets(&trimmed(line, 200)))
+                    .filter(|line| !line.is_empty())
+                    .collect();
+                state
+                    .hub
+                    .broadcast(
+                        session_id,
+                        &json!({"type": "file_preview", "path": path, "user_id": user_id, "outline": outline}),
+                    )
+                    .await;
+            }
+            None
+        }
+        ClientMessage::FileAck { path, applied } => {
+            if crate::guard::is_safe_relative_path(&path) {
+                state
+                    .hub
+                    .broadcast(
+                        session_id,
+                        &json!({"type": "file_ack", "path": path, "user_id": user_id, "applied": applied}),
+                    )
+                    .await;
+            }
             None
         }
         ClientMessage::PinDecision { text } => {
