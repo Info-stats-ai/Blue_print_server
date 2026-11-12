@@ -5,7 +5,7 @@ I-IDE without stepping on each other, and where they get stuck.
 
 ## Before the first session (the host)
 
-1. Package the app: `ZED_RELEASE_CHANNEL=stable cargo build --release -p i-ide && script/package-tester-mac`
+1. Package the app: `ZED_RELEASE_CHANNEL=stable CARGO_INCREMENTAL=0 cargo build --release -p i-ide && script/package-tester-mac`
    (in `~/i-ide`). The DMG lands in `target/tester/`. Apple silicon only.
 2. Send each tester the DMG (Google Drive or AirDrop) and the link https://i-ide.dev/docs/installation.
 3. Check everyone can sign in with GitHub or Google. If Google says "access blocked", the Google
@@ -28,7 +28,8 @@ I-IDE without stepping on each other, and where they get stuck.
 |---|---|---|
 | 0–5 | Host starts a session, sends the invite link, approves each join request | Did anyone fail to join? How long did it take? |
 | 5–8 | Everyone answers "How should files move in this team?" | Which choices people make; whether the card was clear |
-| 8–25 | Each person picks their row in SPEC.md and asks their Agent panel to build it with tests | Do agents use teammates' real code instead of stand-ins? Any collisions? |
+| 8–13 | Host switches the message box to **Plan**, asks for a plan for SPEC.md, answers its questions, then presses **Share with team** | Were the questions useful? Did each person get a task in **Team activity**? |
+| 13–25 | Each person asks their Agent panel to build their task with tests | Do agents use teammates' real code instead of stand-ins? Any collisions? Does Team activity show who is editing what? |
 | 25–28 | Host pins one decision in chat (e.g. "Order ids look like ORD-0001") | Do running agents follow it? |
 | 28–38 | Each person reviews one teammate's agent run: accept, or send back with a note | Was review easy to find? Was the note acted on? |
 | 38–45 | Someone runs `python3 -m unittest`; the team fixes what fails | Do all parts fit together? |
@@ -40,7 +41,7 @@ someone asked "where is…?" or "what does this mean?".
 
 1. What were you trying to do when you felt most lost?
 2. Did your AI know what your teammates had built? Give one example.
-3. Which message or button in the right panel made no sense?
+3. Which message or button in I-mode or Team activity made no sense?
 4. Would you use this with your real team? Why or why not?
 5. One thing you'd change first.
 
@@ -52,6 +53,7 @@ paste into a message to the host with what they did, expected and saw (a screens
 - Time from opening the invite link to being in the session.
 - Files shared automatically vs. by pressing Sync; files held for review.
 - Agent runs accepted vs. sent back.
+- Plan mode: questions asked, tasks created from the shared plan, tasks finished.
 - Collisions: two agents editing the same function.
 - Tests passing at the end.
 - The `/metrics/weekly` numbers for the session.
