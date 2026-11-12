@@ -1,10 +1,15 @@
-//! Team memory: pinned decisions, and search over what a team chose to keep
-//! (remembered agent runs and steps, and decisions).
+//! Team memory: pinned decisions, and search over what a team has said and
+//! done (decisions, the task board, team chat, and the agent runs and steps
+//! people chose to keep).
 //!
-//! Search ranks items by keyword relevance (BM25). When `VOYAGE_API_KEY` is
-//! set it also embeds the query and the items (cached in
+//! Search ranks items by keyword relevance (BM25, with word endings and
+//! `snake_case`/`camelCase` names split, so "fees" finds `late_fee`). When
+//! `VOYAGE_API_KEY` is set it also embeds the query and the items (cached in
 //! `memory_embeddings`) and blends in semantic similarity, so "fines" can
 //! find "late fees". Without the key, keyword search still works.
+//!
+//! Nothing is embedded before keys and passwords are masked, and embedding
+//! counts against the session's daily AI budget.
 
 use std::collections::{HashMap, HashSet};
 
@@ -19,6 +24,11 @@ use crate::errors::AppError;
 pub const MAX_DECISIONS: i64 = 30;
 const MAX_DECISION_CHARS: usize = 500;
 const SEARCH_CORPUS_LIMIT: i64 = 1_000;
+const CHAT_CORPUS_LIMIT: i64 = 300;
+/// Shorter chat lines ("ok", "thanks") aren't worth remembering.
+const MIN_CHAT_CHARS: usize = 25;
+/// Rough price of the embedding model per million tokens, for the budget.
+const EMBEDDING_USD_PER_MILLION_TOKENS: f64 = 0.18;
 /// Override with `VOYAGE_MODEL`.
 fn embedding_model() -> String {
     std::env::var("VOYAGE_MODEL").ok().filter(|model| !model.is_empty()).unwrap_or_else(|| "voyage-code-4".to_string())
@@ -34,7 +44,7 @@ pub struct Decision {
 
 pub fn clean_decision(text: &str) -> Option<String> {
     let text: String = text.trim().chars().take(MAX_DECISION_CHARS).collect();
-    (!text.is_empty()).then_some(text)
+    (!text.is_empty()).then(|| crate::guard::redact_secrets(&text))
 }
 
 pub async fn decisions(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<Decision> {
@@ -84,7 +94,7 @@ pub async fn unpin(pool: &sqlx::SqlitePool, session_id: &str, id: i64) {
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct MemoryHit {
-    /// "decision", "run" or "step".
+    /// "decision", "task", "chat", "run" or "step".
     pub kind: &'static str,
     pub text: String,
     pub score: f64,
@@ -151,7 +161,95 @@ async fn corpus(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<Item> {
     for (id, agent, text, at) in steps {
         items.push(Item { key: format!("step:{id}"), kind: "step", text: format!("{agent}: {text}"), at });
     }
+    let board: Option<(String, String)> =
+        sqlx::query_as("SELECT board, updated_at FROM session_tasks WHERE session_id = ?")
+            .bind(session_id)
+            .fetch_optional(pool)
+            .await
+            .unwrap_or(None);
+    if let Some((board, at)) = board
+        && let Ok(board) = serde_json::from_str::<crate::team::TaskBoard>(&board)
+    {
+        for task in board.tasks {
+            let mut text = format!("{} ({})", task.title, task.status);
+            if let Some(owner) = &task.assignee {
+                text.push_str(&format!(" — owner: {owner}"));
+            }
+            if !task.detail.is_empty() {
+                text.push_str(&format!(" — {}", task.detail));
+            }
+            if !task.files.is_empty() {
+                text.push_str(&format!(" — files: {}", task.files.join(", ")));
+            }
+            // Keyed by content too: a task's status and owner change.
+            items.push(Item { key: format!("task:{}:{:x}", task.id, fingerprint(&text)), kind: "task", text, at: at.clone() });
+        }
+    }
+    let chat: Vec<(i64, String, String, String)> = sqlx::query_as(
+        "SELECT id, sender, text, created_at FROM chat_messages WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+    )
+    .bind(session_id)
+    .bind(CHAT_CORPUS_LIMIT)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    for (id, sender, text, at) in chat {
+        if text.chars().count() >= MIN_CHAT_CHARS {
+            let text: String = text.chars().take(1_500).collect();
+            items.push(Item { key: format!("chat:{id}"), kind: "chat", text: format!("{sender}: {text}"), at });
+        }
+    }
+    for item in &mut items {
+        item.text = crate::guard::redact_secrets(&item.text);
+    }
     items
+}
+
+fn fingerprint(text: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Cuts common English endings so "fees", "fee" and "reserving", "reserve"
+/// meet. Deliberately small: wrong cuts only make search a little looser.
+fn stem(word: &str) -> String {
+    let cut = |suffix: &str, min: usize| word.strip_suffix(suffix).filter(|rest| rest.len() >= min);
+    if let Some(rest) = cut("ies", 2) {
+        return format!("{rest}y");
+    }
+    for (suffix, min) in [("ing", 4), ("ed", 4), ("es", 4), ("s", 3)] {
+        if let Some(rest) = cut(suffix, min) {
+            if suffix == "s" && (rest.ends_with('s') || rest.ends_with('u')) {
+                break;
+            }
+            return rest.strip_suffix('e').filter(|short| short.len() >= 4).unwrap_or(rest).to_string();
+        }
+    }
+    word.strip_suffix('e').filter(|short| short.len() >= 4).unwrap_or(word).to_string()
+}
+
+/// `lateFee_total` → "late", "fee", "total".
+fn split_identifier(word: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut previous_lower = false;
+    for character in word.chars() {
+        if character == '_' || (character.is_uppercase() && previous_lower) {
+            if !current.is_empty() {
+                parts.push(std::mem::take(&mut current));
+            }
+        }
+        if character != '_' {
+            current.extend(character.to_lowercase());
+        }
+        previous_lower = character.is_lowercase() || character.is_ascii_digit();
+    }
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    parts
 }
 
 fn terms(text: &str) -> Vec<String> {
@@ -159,10 +257,10 @@ fn terms(text: &str) -> Vec<String> {
         "the", "and", "for", "with", "that", "this", "from", "into", "are", "was", "were", "you", "your",
         "has", "have", "not", "but", "all", "any", "can", "its", "our", "out", "use", "per",
     ];
-    text.to_lowercase()
-        .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .filter(|word| word.len() >= 3 && !STOP.contains(word))
-        .map(str::to_string)
+    text.split(|c: char| !c.is_alphanumeric() && c != '_')
+        .flat_map(split_identifier)
+        .filter(|word| word.len() >= 3 && !STOP.contains(&word.as_str()))
+        .map(|word| stem(&word))
         .collect()
 }
 
@@ -236,8 +334,19 @@ async fn voyage_embed(key: &str, texts: &[String], input_type: &str) -> Option<V
 
 /// Semantic similarity per item, or `None` without a key or on any failure
 /// (search then falls back to keywords).
-async fn semantic_scores(pool: &sqlx::SqlitePool, query: &str, items: &[Item]) -> Option<Vec<f64>> {
+async fn semantic_scores(
+    pool: &sqlx::SqlitePool,
+    budget: Option<(&crate::ws::Hub, &str)>,
+    query: &str,
+    items: &[Item],
+) -> Option<Vec<f64>> {
     let key = std::env::var("VOYAGE_API_KEY").ok().filter(|key| !key.is_empty())?;
+    if let Some((hub, session_id)) = budget
+        && !hub.ai_budget.has_room(session_id)
+    {
+        return None;
+    }
+    let mut embedded_chars = query.chars().count();
     let mut vectors: HashMap<String, Vec<f32>> = HashMap::new();
     for item in items {
         let row: Option<(Vec<u8>,)> = sqlx::query_as("SELECT vector FROM memory_embeddings WHERE item_key = ? AND model = ?")
@@ -253,6 +362,7 @@ async fn semantic_scores(pool: &sqlx::SqlitePool, query: &str, items: &[Item]) -
     let missing: Vec<&Item> = items.iter().filter(|item| !vectors.contains_key(&item.key)).collect();
     for batch in missing.chunks(100) {
         let texts: Vec<String> = batch.iter().map(|item| item.text.chars().take(4_000).collect()).collect();
+        embedded_chars += texts.iter().map(|text| text.chars().count()).sum::<usize>();
         let embedded = voyage_embed(&key, &texts, "document").await?;
         for (item, vector) in batch.iter().zip(embedded) {
             let bytes: Vec<u8> = vector.iter().flat_map(|x| x.to_le_bytes()).collect();
@@ -265,12 +375,23 @@ async fn semantic_scores(pool: &sqlx::SqlitePool, query: &str, items: &[Item]) -
             vectors.insert(item.key.clone(), vector);
         }
     }
-    let query_vector = voyage_embed(&key, &[query.to_string()], "query").await?.into_iter().next()?;
+    let query_vector = voyage_embed(&key, &[crate::guard::redact_secrets(query)], "query").await?.into_iter().next()?;
+    if let Some((hub, session_id)) = budget {
+        // About four characters to a token.
+        let cost = embedded_chars as f64 / 4.0 / 1_000_000.0 * EMBEDDING_USD_PER_MILLION_TOKENS;
+        hub.record_llm_call(session_id, cost).await;
+    }
     Some(items.iter().map(|item| vectors.get(&item.key).map_or(0.0, |vector| cosine(&query_vector, vector))).collect())
 }
 
 /// The `limit` most relevant items for `query`, best first.
-pub async fn search(pool: &sqlx::SqlitePool, session_id: &str, query: &str, limit: usize) -> Vec<MemoryHit> {
+pub async fn search(
+    pool: &sqlx::SqlitePool,
+    hub: Option<&crate::ws::Hub>,
+    session_id: &str,
+    query: &str,
+    limit: usize,
+) -> Vec<MemoryHit> {
     let items = corpus(pool, session_id).await;
     if items.is_empty() {
         return Vec::new();
@@ -278,7 +399,7 @@ pub async fn search(pool: &sqlx::SqlitePool, session_id: &str, query: &str, limi
     let texts: Vec<String> = items.iter().map(|item| item.text.clone()).collect();
     let keyword = bm25(query, &texts);
     let best_keyword = keyword.iter().cloned().fold(0.0_f64, f64::max).max(1e-9);
-    let semantic = semantic_scores(pool, query, &items).await;
+    let semantic = semantic_scores(pool, hub.map(|hub| (hub, session_id)), query, &items).await;
     let mut hits: Vec<MemoryHit> = items
         .into_iter()
         .enumerate()
@@ -312,12 +433,27 @@ pub async fn search_handler(
 ) -> Result<Json<Vec<MemoryHit>>, AppError> {
     crate::handlers::require_member(&state, &session_id, &user_id).await?;
     let limit = params.limit.unwrap_or(5).clamp(1, 20);
-    Ok(Json(search(&state.pool, &session_id, params.q.trim(), limit).await))
+    let query: String = params.q.trim().chars().take(2_000).collect();
+    Ok(Json(search(&state.pool, Some(&state.hub), &session_id, &query, limit).await))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn word_endings_and_code_names_match() {
+        assert_eq!(terms("late_fee"), terms("late fees"));
+        assert_eq!(terms("reserveStock"), terms("reserving stocks"));
+        assert_eq!(terms("policies"), terms("policy"));
+        assert_eq!(stem("class"), "class");
+        let docs = vec![
+            "Implement Inventory.reserve_stock and release".to_string(),
+            "Catalog search by name and category".to_string(),
+        ];
+        let scores = bm25("who is reserving stock?", &docs);
+        assert!(scores[0] > scores[1] && scores[0] > 0.0);
+    }
 
     #[test]
     fn keyword_search_ranks_the_matching_item_first() {

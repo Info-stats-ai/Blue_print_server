@@ -327,49 +327,122 @@ pub struct Hub {
     pub ai_budget: AiBudget,
 }
 
-/// Caps what one session can spend of the server's shared AI key per day.
-/// Estimated from token counts and kept in memory, so a restart resets it;
-/// it's a brake on runaway use, not billing.
+/// Caps what one session, and the whole server, can spend of the shared AI
+/// key per day. Estimated from token counts: a brake on runaway use, not
+/// billing. Totals are also written to `ai_spend`, so a restart or redeploy
+/// doesn't hand everyone a fresh allowance.
 #[derive(Clone, Default)]
 pub struct AiBudget {
     spent: Arc<std::sync::Mutex<HashMap<String, (String, f64)>>>,
+    pool: Arc<std::sync::OnceLock<sqlx::SqlitePool>>,
 }
+
+/// The scope that totals every session.
+const ALL_SESSIONS: &str = "*";
 
 impl AiBudget {
     fn cap_usd() -> f64 {
-        std::env::var("SESSION_DAILY_AI_CAP_USD")
+        Self::env_cap("SESSION_DAILY_AI_CAP_USD", 2.0)
+    }
+
+    fn global_cap_usd() -> f64 {
+        Self::env_cap("GLOBAL_DAILY_AI_CAP_USD", 25.0)
+    }
+
+    fn env_cap(name: &str, default: f64) -> f64 {
+        std::env::var(name)
             .ok()
             .and_then(|value| value.parse().ok())
-            .unwrap_or(2.0)
+            .filter(|cap: &f64| cap.is_finite() && *cap >= 0.0)
+            .unwrap_or(default)
     }
 
     fn today() -> String {
         chrono::Utc::now().format("%Y-%m-%d").to_string()
     }
 
+    /// Loads today's totals and keeps the pool for writing new ones.
+    pub async fn restore(&self, pool: &sqlx::SqlitePool) {
+        let today = Self::today();
+        let rows: Vec<(String, f64)> = sqlx::query_as("SELECT scope, usd FROM ai_spend WHERE day = ?")
+            .bind(&today)
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
+        if let Ok(mut spent) = self.spent.lock() {
+            for (scope, usd) in rows {
+                spent.insert(scope, (today.clone(), usd));
+            }
+        }
+        let _ = self.pool.set(pool.clone());
+        let _ = sqlx::query("DELETE FROM ai_spend WHERE day < ?")
+            .bind(chrono::Utc::now().checked_sub_days(chrono::Days::new(60)).map(|day| day.format("%Y-%m-%d").to_string()))
+            .execute(pool)
+            .await;
+    }
+
     pub fn record(&self, session_id: &str, cost_usd: f64) {
-        self.record_on(session_id, cost_usd, &Self::today());
+        let today = Self::today();
+        self.record_on(session_id, cost_usd, &today);
+        let Some(pool) = self.pool.get().cloned() else {
+            return;
+        };
+        let session_id = session_id.to_string();
+        tokio::spawn(async move {
+            for scope in [session_id.as_str(), ALL_SESSIONS] {
+                let _ = sqlx::query(
+                    "INSERT INTO ai_spend (scope, day, usd) VALUES (?, ?, ?) \
+                     ON CONFLICT (scope, day) DO UPDATE SET usd = usd + excluded.usd",
+                )
+                .bind(scope)
+                .bind(&today)
+                .bind(cost_usd)
+                .execute(&pool)
+                .await;
+            }
+        });
     }
 
     fn record_on(&self, session_id: &str, cost_usd: f64, day: &str) {
+        if !cost_usd.is_finite() || cost_usd <= 0.0 {
+            return;
+        }
         if let Ok(mut spent) = self.spent.lock() {
-            let entry = spent.entry(session_id.to_string()).or_insert_with(|| (day.to_string(), 0.0));
-            if entry.0 != day {
-                *entry = (day.to_string(), 0.0);
+            for scope in [session_id, ALL_SESSIONS] {
+                let entry = spent.entry(scope.to_string()).or_insert_with(|| (day.to_string(), 0.0));
+                if entry.0 != day {
+                    *entry = (day.to_string(), 0.0);
+                }
+                entry.1 += cost_usd;
             }
-            entry.1 += cost_usd;
         }
     }
 
+    /// Whether this session may make another call on the shared key today:
+    /// both its own cap and the server-wide one have room.
     pub fn has_room(&self, session_id: &str) -> bool {
-        self.has_room_on(session_id, &Self::today(), Self::cap_usd())
+        let today = Self::today();
+        self.has_room_on(session_id, &today, Self::cap_usd())
+            && self.has_room_on(ALL_SESSIONS, &today, Self::global_cap_usd())
     }
 
-    fn has_room_on(&self, session_id: &str, day: &str, cap: f64) -> bool {
+    /// What this session has spent today and its cap, for showing people.
+    pub fn status(&self, session_id: &str) -> (f64, f64) {
+        let today = Self::today();
+        let spent = self
+            .spent
+            .lock()
+            .ok()
+            .and_then(|spent| spent.get(session_id).filter(|(day, _)| *day == today).map(|(_, usd)| *usd))
+            .unwrap_or(0.0);
+        (spent, Self::cap_usd())
+    }
+
+    fn has_room_on(&self, scope: &str, day: &str, cap: f64) -> bool {
         let Ok(spent) = self.spent.lock() else {
             return false;
         };
-        match spent.get(session_id) {
+        match spent.get(scope) {
             Some((spent_day, amount)) if spent_day == day => *amount < cap,
             _ => true,
         }
@@ -490,6 +563,12 @@ mod ai_budget_tests {
         assert!(!budget.has_room_on("s1", "d1", 1.0));
         assert!(budget.has_room_on("s2", "d1", 1.0), "sessions are separate");
         assert!(budget.has_room_on("s1", "d2", 1.0), "a new day starts fresh");
+        assert!(budget.has_room_on(ALL_SESSIONS, "d1", 2.0), "1.2 of 2.0 used across sessions");
+        budget.record_on("s2", 0.9, "d1");
+        assert!(!budget.has_room_on(ALL_SESSIONS, "d1", 2.0), "the server-wide total counts every session");
+        budget.record_on("s3", f64::NAN, "d1");
+        budget.record_on("s3", -5.0, "d1");
+        assert!(budget.has_room_on("s3", "d1", 0.01), "bad amounts are ignored");
     }
 }
 
@@ -519,6 +598,12 @@ pub struct SessionMetrics {
     // made — approximate by construction (see that function's doc comment),
     // not a substitute for the real Anthropic invoice.
     pub estimated_cost_usd: f64,
+    // What this session has used of the shared AI key today, and the daily
+    // cap it stops at, so people can see how close they are.
+    #[serde(default)]
+    pub spent_today_usd: f64,
+    #[serde(default)]
+    pub daily_cap_usd: f64,
 }
 
 impl Hub {
@@ -1056,12 +1141,9 @@ impl Hub {
     /// happened yet) — used to seed a (re)joining peer's snapshot so they
     /// don't see the overlay start from zero mid-session.
     pub async fn get_metrics(&self, session_id: &str) -> SessionMetrics {
-        self.metrics
-            .read()
-            .await
-            .get(session_id)
-            .cloned()
-            .unwrap_or_default()
+        let mut metrics = self.metrics.read().await.get(session_id).cloned().unwrap_or_default();
+        (metrics.spent_today_usd, metrics.daily_cap_usd) = self.ai_budget.status(session_id);
+        metrics
     }
 
     /// Removes every session with zero currently-connected peers whose
@@ -1115,6 +1197,7 @@ impl Hub {
             let mut metrics = self.metrics.write().await;
             let entry = metrics.entry(session_id.to_string()).or_default();
             update(entry);
+            (entry.spent_today_usd, entry.daily_cap_usd) = self.ai_budget.status(session_id);
             entry.clone()
         };
         self.broadcast(
@@ -1737,7 +1820,10 @@ pub async fn ws_handler(
     }
 
     let session_id = params.session_id;
-    Ok(ws.on_upgrade(move |socket| handle_socket(socket, state, session_id, user_id)))
+    Ok(ws
+        .max_message_size(crate::guard::MAX_WS_MESSAGE_BYTES)
+        .max_frame_size(crate::guard::MAX_WS_MESSAGE_BYTES)
+        .on_upgrade(move |socket| handle_socket(socket, state, session_id, user_id)))
 }
 
 /// A readable name for every member of the session, keyed by user id. Users
@@ -2232,7 +2318,7 @@ fn clean_agent_run(
     if !AGENT_RUN_STATUSES.contains(&status) {
         return None;
     }
-    let goal = trimmed(goal, 500);
+    let goal = crate::guard::redact_secrets(&trimmed(goal, 500));
     if goal.is_empty() {
         return None;
     }
@@ -2252,7 +2338,9 @@ fn clean_agent_run(
         goal,
         status: status.to_string(),
         files,
-        summary: summary.map(|summary| trimmed(summary, MAX_AGENT_STEP_CHARS)).filter(|summary| !summary.is_empty()),
+        summary: summary
+            .map(|summary| crate::guard::redact_secrets(&trimmed(summary, MAX_AGENT_STEP_CHARS)))
+            .filter(|summary| !summary.is_empty()),
         reviews: Vec::new(),
         started_at: now.clone(),
         updated_at: now,
@@ -2362,6 +2450,7 @@ fn clean_agent_step(agent: &str, kind: &str, text: &str, path: Option<&str>) -> 
     }
     let agent: String = agent.trim().chars().take(60).collect();
     let text: String = text.trim().chars().take(MAX_AGENT_STEP_CHARS).collect();
+    let text = crate::guard::redact_secrets(&text);
     let path = path
         .map(|path| path.trim().chars().take(400).collect::<String>())
         .filter(|path| !path.is_empty());
@@ -2386,17 +2475,21 @@ async fn handle_client_message(
 
     match message {
         ClientMessage::Chat { text, local_agent } => {
-            handle_chat_message(state, session_id, user_id, text, local_agent).await;
+            let text = crate::guard::clean_chat(&text);
+            if !text.is_empty() {
+                handle_chat_message(state, session_id, user_id, text, local_agent).await;
+            }
             None
         }
         ClientMessage::AiReply { label, text } => {
-            handle_ai_reply(state, session_id, user_id, label, text).await;
+            handle_ai_reply(state, session_id, user_id, label, crate::guard::clean_chat(&text)).await;
             None
         }
         // The payload's `sender` is ignored in favor of the authenticated
         // user, same as chat, so presence can't be spoofed and every client
         // agrees on one id per person.
         ClientMessage::FileOpen { path } => {
+            let path: String = path.chars().take(400).collect();
             state
                 .hub
                 .set_presence(session_id, user_id, path.clone())
@@ -2415,6 +2508,11 @@ async fn handle_client_message(
             content,
             origin,
         } => {
+            // Secret files, files holding keys, oversized files and paths
+            // outside the project stop here; only the sender hears why.
+            if let Some(reason) = crate::guard::file_refusal(&path, &content) {
+                return Some(crate::guard::notice(&reason));
+            }
             handle_file_save_message(state, session_id, user_id, path, content, origin).await;
             None
         }
@@ -2639,6 +2737,9 @@ async fn handle_client_message(
             None
         }
         ClientMessage::BufferJoin { path } => {
+            if !crate::guard::is_safe_relative_path(&path) || crate::guard::is_sensitive_path(&path) {
+                return Some(crate::guard::notice(&format!("Not shared live: {path} is a file that usually holds keys or passwords.")));
+            }
             match state.hub.join_buffer(session_id, user_id, &path).await {
                 Ok(join) => Some(json!({
                     "type": "buffer_joined",
@@ -2657,6 +2758,9 @@ async fn handle_client_message(
             }
         }
         ClientMessage::BufferOp { path, op, origin } => {
+            if !crate::guard::is_safe_relative_path(&path) || crate::guard::is_sensitive_path(&path) {
+                return None;
+            }
             let previous_text = state
                 .hub
                 .get_file(session_id, &path)

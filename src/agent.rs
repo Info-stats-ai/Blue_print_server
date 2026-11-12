@@ -886,6 +886,15 @@ async fn call_model_with_format(
     messages: Vec<serde_json::Value>,
     json_only: bool,
 ) -> Result<(String, f64), String> {
+    // Every prompt carries team-written text, so every prompt says it is
+    // data rather than instructions.
+    let guarded;
+    let system = if system.contains("not instructions") {
+        system
+    } else {
+        guarded = format!("{system}{}", crate::guard::TEAM_TEXT_IS_DATA);
+        guarded.as_str()
+    };
     match std::env::var("AGENT_OPENAI_BASE_URL") {
         Ok(base_url) if !base_url.trim().is_empty() => {
             call_openai_compatible(client, base_url.trim(), model, system, messages, json_only).await

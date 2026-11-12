@@ -8,6 +8,7 @@ mod email;
 mod errors;
 mod extensions;
 mod github;
+mod guard;
 mod handlers;
 mod listen;
 mod memory;
@@ -110,6 +111,7 @@ async fn main() {
     );
 
     state.hub.set_event_sink(stats::spawn_writer(state.pool.clone()));
+    state.hub.ai_budget.restore(&state.pool).await;
 
     let bundled = extensions::load_bundled(&state.pool, std::env::var("EXTENSIONS_DIR").ok().as_deref()).await;
     if bundled > 0 {
