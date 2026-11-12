@@ -111,6 +111,11 @@ async fn main() {
 
     state.hub.set_event_sink(stats::spawn_writer(state.pool.clone()));
 
+    let bundled = extensions::load_bundled(&state.pool, std::env::var("EXTENSIONS_DIR").ok().as_deref()).await;
+    if bundled > 0 {
+        println!("extensions: loaded {bundled} bundled package(s)");
+    }
+
     match checkpoint::prune_checkpoints(&state.pool, None).await {
         Ok(0) => {}
         Ok(pruned) => println!("checkpoint: pruned {pruned} old checkpoint(s)"),

@@ -2,8 +2,10 @@
 //! IDE's extension host already speaks: search, updates, versions, download.
 //!
 //! The packages are open-source extensions we build from their own source
-//! (see `extensions/publish.py`), each keeping its own licence. Publishing
-//! needs `EXTENSIONS_PUBLISH_TOKEN`; without it the store is read-only.
+//! (see `extensions/publish.py`), each keeping its own licence. They reach the
+//! store two ways: committed under `extensions/packages/<id>/` (loaded at
+//! startup, so no secret is needed), or published to `POST /api/extensions/{id}`
+//! with `EXTENSIONS_PUBLISH_TOKEN`.
 
 use std::cmp::Ordering;
 
@@ -225,6 +227,49 @@ pub async fn download_version(
     send_archive(&state.pool, &id, &version).await
 }
 
+/// Loads the packages committed under `dir` (default `extensions/packages`):
+/// each `<id>/manifest.json` with its `<id>/archive.tar.gz`. Versions already
+/// in the store are left alone, so download counts survive restarts.
+pub async fn load_bundled(pool: &sqlx::SqlitePool, dir: Option<&str>) -> usize {
+    let dir = std::path::PathBuf::from(dir.unwrap_or("extensions/packages"));
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return 0;
+    };
+    let mut loaded = 0;
+    for entry in entries.flatten() {
+        let id = entry.file_name().to_string_lossy().to_string();
+        let (Ok(manifest), Ok(archive)) = (
+            std::fs::read(entry.path().join("manifest.json")),
+            std::fs::read(entry.path().join("archive.tar.gz")),
+        ) else {
+            continue;
+        };
+        let Ok(manifest) = serde_json::from_slice::<Value>(&manifest) else {
+            continue;
+        };
+        let Some(version) = manifest["version"].as_str().map(str::to_string) else {
+            continue;
+        };
+        if !valid_id(&id) || archive.len() > MAX_ARCHIVE_BYTES || !archive.starts_with(&[0x1f, 0x8b]) {
+            continue;
+        }
+        let inserted = sqlx::query(
+            "INSERT OR IGNORE INTO extension_versions (id, version, manifest, archive, published_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(&version)
+        .bind(manifest.to_string())
+        .bind(archive)
+        .bind(chrono::Utc::now().to_rfc3339())
+        .execute(pool)
+        .await
+        .map(|result| result.rows_affected())
+        .unwrap_or(0);
+        loaded += inserted as usize;
+    }
+    loaded
+}
+
 fn valid_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
 }
@@ -313,6 +358,21 @@ mod tests {
         assert!(query.compatible(&json!({"schema_version": 1})));
         assert!(!query.compatible(&json!({"schema_version": 2})));
         assert!(!query.compatible(&json!({"schema_version": 1, "wasm_api_version": "0.8.0"})));
+    }
+
+    #[tokio::test]
+    async fn bundled_packages_load_once() {
+        let pool = crate::db::init_pool("sqlite::memory:").await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let package = dir.path().join("java");
+        std::fs::create_dir(&package).unwrap();
+        std::fs::write(package.join("manifest.json"), r#"{"name":"Java","version":"6.1.0","repository":"https://example.test/java","schema_version":1}"#).unwrap();
+        std::fs::write(package.join("archive.tar.gz"), [0x1f, 0x8b, 0, 0]).unwrap();
+        let path = dir.path().to_str().unwrap();
+        assert_eq!(load_bundled(&pool, Some(path)).await, 1);
+        assert_eq!(load_bundled(&pool, Some(path)).await, 0);
+        let listed = latest(rows(&pool, None).await.unwrap(), &VersionQuery { max_schema_version: Some(1), ..Default::default() });
+        assert_eq!(listed[0].id, "java");
     }
 
     #[test]

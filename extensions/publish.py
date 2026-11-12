@@ -8,12 +8,21 @@ licence. Extensions without a licence file are skipped.
 
     python3 extensions/publish.py build                 # every extension in catalog.txt
     python3 extensions/publish.py build java ruby       # just these
+    python3 extensions/publish.py bundle               # copy built packages into extensions/packages
     EXTENSIONS_PUBLISH_TOKEN=... python3 extensions/publish.py upload https://i-ide.dev
+
+`bundle` puts the packages in the repo, where the server loads them at startup:
+commit and push, and the live store has them without any token.
 
 Built packages are kept in ~/.cache/i-ide-extensions/out/<id>/ so they can be
 uploaded to several servers (a local demo and the real one) without rebuilding.
 """
-import base64, json, os, subprocess, sys, tomllib, urllib.request
+import base64, json, os, re, subprocess, sys, urllib.request
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python before 3.11
+    tomllib = None
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -41,7 +50,18 @@ def index_entries():
         run("git", "clone", "--depth", "1", "--filter=blob:none", INDEX_REPO, str(INDEX))
     else:
         run("git", "pull", "--ff-only", "-q", cwd=INDEX)
-    return tomllib.loads((INDEX / "extensions.toml").read_text())
+    text = (INDEX / "extensions.toml").read_text()
+    if tomllib:
+        return tomllib.loads(text)
+    # The index is flat: [name] sections of key = "value" lines.
+    entries, current = {}, None
+    for line in text.splitlines():
+        line = line.split("#")[0].strip()
+        if match := re.fullmatch(r"\[([^\]]+)\]", line):
+            current = entries.setdefault(match.group(1).strip('"'), {})
+        elif current is not None and (match := re.fullmatch(r'([A-Za-z_]+)\s*=\s*"([^"]*)"', line)):
+            current[match.group(1)] = match.group(2)
+    return entries
 
 
 def has_licence(directory: Path):
@@ -110,10 +130,24 @@ def upload(server, names):
             print(f"failed {package.name}: {error.code} {error.read().decode()[:200]}", flush=True)
 
 
+def bundle():
+    target = HERE / "packages"
+    count = 0
+    for package in sorted(OUT.iterdir()) if OUT.exists() else []:
+        if (package / "archive.tar.gz").exists() and (package / "manifest.json").exists():
+            (target / package.name).mkdir(parents=True, exist_ok=True)
+            for name in ("archive.tar.gz", "manifest.json"):
+                (target / package.name / name).write_bytes((package / name).read_bytes())
+            count += 1
+    print(f"bundled {count} packages into {target}")
+
+
 if __name__ == "__main__":
     command, *rest = sys.argv[1:] or ["help"]
     if command == "build":
         build(rest or catalog())
+    elif command == "bundle":
+        bundle()
     elif command == "upload" and rest:
         upload(rest[0], set(rest[1:]))
     else:
