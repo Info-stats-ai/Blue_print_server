@@ -1,10 +1,10 @@
 <article data-page="/docs/interface" data-group="Get started" data-title="The I-IDE interface">
 <h1>The I-IDE interface</h1>
 <p class="lede">The I-IDE window has an editor in the middle, panels on each side, and a status bar along the bottom. This page explains each part.</p>
-<figure><img width="1100" height="752" src="/docs/img/window.jpg" alt="The I-IDE window: files on the left, cart.py open in the middle, and the I-mode panel on the right with the team chat, a file Alice's agent sent, and Bob's AI describing it." loading="lazy"><figcaption>The I-IDE window during a team session.</figcaption></figure>
+<figure><img width="1100" height="752" src="/docs/img/window.jpg" alt="The I-IDE window: files with Team activity below them on the left (Bob editing, tasks with owners), SPEC.md in the middle, and the I-mode chat on the right with a shared plan turned into tasks." loading="lazy"><figcaption>The I-IDE window during a team session.</figcaption></figure>
 <h2>Main areas</h2>
 <ul>
-  <li><strong>Project Panel:</strong> your project's files and folders, on the left. Toggle the left side with <kbd>Cmd</kbd>+<kbd>B</kbd>.</li>
+  <li><strong>Project Panel:</strong> your project's files and folders, on the left, with <strong>Team activity</strong> below them in a session. Toggle the left side with <kbd>Cmd</kbd>+<kbd>B</kbd>.</li>
   <li><strong>Editor:</strong> where you read and change code. Each open file gets a tab.</li>
   <li><strong>I-mode panel:</strong> sign-in, team sessions, chat and your AI, on the right. Toggle the right side with <kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>B</kbd>.</li>
   <li><strong>Bottom dock:</strong> the terminal and other tools. Toggle it with <kbd>Cmd</kbd>+<kbd>J</kbd>.</li>
@@ -15,20 +15,19 @@
 <ul>
   <li><strong>Two panels on one side:</strong> opening a panel on a side that already shows one keeps both, one above the other. For example, open <strong>Git</strong> and it appears below I-mode, or open the <strong>Agent Panel</strong> and it appears below your files. Drag the line between them to share the space, and select a panel's status bar button again to hide just that panel.</li>
   <li><strong>Terminal beside your code:</strong> the terminal opens at the bottom. To have it at a side instead, choose <strong>Beside the editor, right</strong> or <strong>left</strong>, so the side panels stay in view.</li>
-  <li><strong>Resize parts of I-mode:</strong> drag the line under the session title, or the line above the message box, to make that part taller or shorter. Double-click a line to put it back.</li>
+  <li><strong>A bigger message box:</strong> select the expand button at the top right of the message box in I-mode.</li>
 </ul>
 <p>To have each panel replace the one on its side instead, add <code>"stack_side_panels": false</code> to your settings.</p>
 <h2>The I-mode panel</h2>
-<p>From top to bottom, the panel has these parts during a session:</p>
+<p>From top to bottom, the panel has three parts:</p>
 <ol>
-  <li><strong>Header:</strong> the words <strong>I-mode</strong>, how many people are present, the people menu and the I-mode switch.</li>
-  <li><strong>Session title:</strong> the session name and goal, with a button that copies the invite link.</li>
-  <li><strong>Tabs:</strong> <strong>Chat</strong>, <strong>Tasks</strong> and <strong>Team</strong>.</li>
-  <li><strong>Send to:</strong> choose whether your message goes to your <strong>Team</strong> or <strong>My AI</strong>.</li>
-  <li><strong>Tool row:</strong> effort level and the buttons described in <a href="/docs/chat#tool-row">Team chat</a>.</li>
-  <li><strong>Message box:</strong> where you type.</li>
-  <li><strong>Mode and model:</strong> <strong>Ask</strong>, <strong>Plan</strong> or <strong>Agent</strong>, and which AI model to use.</li>
+  <li><strong>Header:</strong> the words <strong>I-mode</strong>, the session name and how many people are here (hover for the session goal), the people menu and the I-mode switch.</li>
+  <li><strong>Chat:</strong> your team's messages and your AI's answers.</li>
+  <li><strong>Message box:</strong> the tool row, the box itself, and the mode menu (<strong>Team</strong>, <strong>Ask</strong>, <strong>Plan</strong>, <strong>Agent</strong>) with the model and send button.</li>
 </ol>
+<h2>Team activity</h2>
+<figure class="small"><img width="319" height="1000" src="/docs/img/team-chat.jpg" alt="The I-mode panel: the end of a plan, then the task plan the session made from it, listing each person's tasks, above the message box." loading="lazy"><figcaption>The I-mode panel after a plan was shared.</figcaption></figure>
+<p>The <strong>Team activity</strong> panel sits beside your files. It shows who's here and which file each person is editing, with a colored status: amber for editing, blue for an agent running, grey for idle. Below that are the tasks and the latest changes.</p>
 <h2>The people menu</h2>
 <p>Select the people icon next to the I-mode switch to invite people, share files or your running app, and leave a session. If you're not in a session, it's where you create or join one.</p>
 <figure class="small"><img width="380" height="320" src="/docs/img/people-menu.jpg" alt="The people menu: AI & sharing, Invite by email, Share files, Share running app, Copy invite link, Leave session and Log out." loading="lazy"><figcaption>The people menu, as a session owner sees it.</figcaption></figure>

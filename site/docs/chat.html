@@ -1,28 +1,30 @@
 <article data-page="/docs/chat" data-group="Work with your team" data-title="Team chat">
 <h1>Team chat</h1>
-<p class="lede">The Chat tab is where you talk to your team and your AI. The <strong>Send to</strong> control decides who reads each message.</p>
+<p class="lede">The I-mode panel is one conversation: header, chat, message box. The mode menu under the message box decides who reads what you send.</p>
 <h2>Choose who gets your message</h2>
-<table><thead><tr><th>Send to</th><th>Who reads it</th></tr></thead><tbody>
-  <tr><td><strong>Team</strong></td><td>Everyone in the session.</td></tr>
-  <tr><td><strong>My AI</strong></td><td>Your own AI. It's private to you.</td></tr>
+<p>Select the mode menu at the bottom left of the panel, or press <kbd>Shift</kbd>+<kbd>Tab</kbd> in the message box to move through the modes.</p>
+<table><thead><tr><th>Mode</th><th>Who reads it</th></tr></thead><tbody>
+  <tr><td><strong>Team</strong></td><td>The people in the session. No AI.</td></tr>
+  <tr><td><strong>Ask</strong></td><td>Your AI, which answers questions and changes nothing.</td></tr>
+  <tr><td><strong>Plan</strong></td><td>Your AI, which reads the code, asks what it needs, then writes a plan. See <a href="/docs/your-ai#plan">Plan mode</a>.</td></tr>
+  <tr><td><strong>Agent</strong></td><td>Your AI, which writes code and runs commands.</td></tr>
 </tbody></table>
-<h2>Send a message to your team</h2>
-<ol>
-  <li>Set <strong>Send to</strong> to <strong>Team</strong>.</li>
-  <li>Type in the message box.</li>
-  <li>Press <kbd>Return</kbd>.</li>
-</ol>
-<h2>Team chat is for people</h2>
-<p>Messages sent to <strong>Team</strong> go to the people in the session. To ask your AI, switch <strong>Send to</strong> to <strong>My AI</strong>, or use the <a href="/docs/agent-panel">Agent Panel</a> on the left. The two work as a pair; see <a href="/docs/agent-panel#your-two-ais">Your two AIs</a>.</p>
-<p>When the team has agreed what to do, end a message with <code>@agent</code> to hand the agreed work to your AI. <strong>Send to</strong> then switches to <strong>My AI</strong>.</p>
+<p>A session starts on <strong>Team</strong>. When the team has agreed what to do, end a message with <code>@agent</code> to hand the agreed work to your AI; the mode switches to your AI for the messages that follow.</p>
+<h2>What stays in the chat</h2>
+<p>Messages, your AI's answers and files teammates send stay in the chat. Short notices, such as someone joining or a setting you changed, show for a few seconds above the message box and then go away.</p>
+<h2>Choose how files move</h2>
+<p>The <strong>Files</strong> button in the tool row shows how your changes and your teammates' changes move, and lets you change either at any time. See <a href="/docs/live-editing">Live editing</a>.</p>
+<h2>A bigger message box</h2>
+<p>The message box grows as you type, up to eight lines. For a long message, select the expand button at its top right; select it again, or send, to make it small again.</p>
 <h2 id="tool-row">The tool row</h2>
 <p>These buttons sit above the message box. Hover over any of them to see its name.</p>
 <table><thead><tr><th>Control</th><th>What it does</th></tr></thead><tbody>
-  <tr><td><strong>Effort</strong> menu</td><td>Sets how hard your AI thinks. See <a href="/docs/your-ai#effort">Effort</a>.</td></tr>
-  <tr><td>Document button</td><td>Starts writing the <a href="/docs/reference-doc">shared reference</a>.</td></tr>
-  <tr><td>List button</td><td>Runs <a href="/docs/triage">triage</a>. Only the owner can use it.</td></tr>
-  <tr><td>Circle button</td><td>Syncs the file you have open.</td></tr>
-  <tr><td>Image and paper clip buttons</td><td>Attach an image or a file.</td></tr>
-  <tr><td>Speaker button</td><td>Starts macOS dictation.</td></tr>
+  <tr><td><strong>+</strong> menu</td><td>Add an image, send the open file to the team, write the <a href="/docs/reference-doc">team plan</a>, or run <a href="/docs/triage">triage</a> (owner only).</td></tr>
+  <tr><td>Paper clip</td><td>Attach a file.</td></tr>
+  <tr><td>Microphone</td><td>Starts macOS dictation.</td></tr>
+  <tr><td><strong>Files</strong></td><td>How files move in this session.</td></tr>
+  <tr><td><strong>Thinking</strong></td><td>How hard your AI thinks. Shown only when you're talking to your AI. See <a href="/docs/your-ai#effort">Effort</a>.</td></tr>
 </tbody></table>
+<h2>See the team at a glance</h2>
+<p>Who's here and which file each person is editing, the tasks and the latest changes are in the <strong>Team activity</strong> panel beside your files. Open it with its button in the status bar, or from the people menu.</p>
 </article>

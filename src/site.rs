@@ -67,8 +67,8 @@ const DOC_IMAGES: &[(&str, &[u8])] = &[
     ("people-menu.jpg", include_bytes!("../site/docs-img/people-menu.jpg")),
     ("join-request.jpg", include_bytes!("../site/docs-img/join-request.jpg")),
     ("team-chat.jpg", include_bytes!("../site/docs-img/team-chat.jpg")),
-    ("team-tab.jpg", include_bytes!("../site/docs-img/team-tab.jpg")),
-    ("tasks.jpg", include_bytes!("../site/docs-img/tasks.jpg")),
+    ("team-activity.jpg", include_bytes!("../site/docs-img/team-activity.jpg")),
+    ("plan-mode.jpg", include_bytes!("../site/docs-img/plan-mode.jpg")),
     ("signed-out.jpg", include_bytes!("../site/docs-img/signed-out.jpg")),
 ];
 
