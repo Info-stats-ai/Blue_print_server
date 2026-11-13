@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>I: build together, every AI in sync</title>
-<meta name="description" content="I is a code editor where your team and its AI agents share one live picture of the code: changes merge themselves, history needs no git, and you decide what is shared.">
+<title>I: build together, every agent in sync</title>
+<meta name="description" content="I is a code editor where your team and its AI agents share one live picture of the code: shared context, team memory (RAG), live agent updates, merging and history without git.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
 <style>{{CSS}}</style>
 </head>
@@ -15,8 +15,8 @@
   <section class="h-hero">
     <canvas id="hero-art" aria-hidden="true"></canvas>
     <div class="h-hero-copy">
-      <h1>Build together.<br><span class="dim">Every AI in sync.</span></h1>
-      <p>I is a code editor where your team and its AI agents<br class="wide"> share one live picture of the code.</p>
+      <h1>Build together.<br><span class="dim">Every agent in sync.</span></h1>
+      <p class="rotor" data-rotor data-lines="One live picture of the code, for your team and its agents.|Shared context: decisions and chat reach every agent.|Team memory, searched for every question. RAG, built in.|Agents see each other's work, live.|Changes merge themselves.|Merging and history are built in.|No git required. It still works if you want it.|You decide what's shared."><span class="sr-only">I is a code editor where your team and its agents share one live picture of the code. Decisions and chat reach every agent. Team memory is searched for every question. Agents see each other's work, live. Changes merge themselves. Merging and history are built in.</span><span class="rotor-line" aria-hidden="true">One live picture of the code, for your team and its agents.</span></p>
       <div class="h-actions">
         <a class="pill solid" href="/download">Join the waitlist <span aria-hidden="true">»</span></a>
         <a class="pill" href="/docs/tutorial">See how it works</a>
@@ -26,8 +26,20 @@
   </section>
 
   <section class="h-section" id="product">
-    <div class="points">
-      <div class="point"><b>Your AI knows what the team is doing</b><span>Teammates' changes, decisions and tasks reach every AI as they happen. No stand-in code, no guessing.</span></div>
+    <div class="h-head">
+      <h2>Every agent knows<br><span class="dim">what the team knows.</span></h2>
+      <p>Most AI agents work blind to the rest of the team. In a session, each one gets the same live picture, and you can see exactly what it's given.</p>
+    </div>
+    <div class="points three">
+      <div class="point"><small>Shared context</small><b>One decision reaches every agent</b><span>Pin a call in team chat and every agent follows it. The latest chat and the files teammates sent go into each AI's live update.</span></div>
+      <div class="point"><small>Team memory · RAG</small><b>Searched before your AI answers</b><span>I searches what the team has said and done (chat, decisions, tasks, agent runs) and adds what's relevant to your question. Nothing to set up.</span></div>
+      <div class="point"><small>Live agent context</small><b>Agents see each other's work</b><span>When a teammate's agent starts, yours is told what it's doing, which code it holds and what it wrote, as it happens. No stand-ins, no guessing.</span></div>
+    </div>
+    <div class="h-head">
+      <h2>Merging and history are built in.<br><span class="dim">Git is optional.</span></h2>
+      <p>Work on the same files at the same time. I merges what fits, flags what doesn't, and keeps every version.</p>
+    </div>
+    <div class="points three">
       <div class="point"><b>Changes merge themselves</b><span>Edits to different parts of a file combine on their own. A real clash is flagged to everyone, on the file.</span></div>
       <div class="point"><b>History without git</b><span>Every synced version is kept, with who made it. View or restore any of them in a click. Git still works.</span></div>
       <div class="point"><b>You decide what's shared</b><span>Sync automatically or file by file. Keys and private folders never leave your machine.</span></div>
@@ -241,6 +253,23 @@
   draw(0);
   if (still) window.addEventListener("resize", function () { draw(0); });
   else requestAnimationFrame(frame);
+
+  // Hero line: one line that fades out, changes and fades back in.
+  var rotor = document.querySelector("[data-rotor]");
+  if (rotor && !still) {
+    var lines = rotor.dataset.lines.split("|");
+    var line = rotor.querySelector(".rotor-line");
+    var at = 0;
+    setInterval(function () {
+      if (document.hidden) return;
+      line.classList.add("out");
+      setTimeout(function () {
+        at = (at + 1) % lines.length;
+        line.textContent = lines[at];
+        line.classList.remove("out");
+      }, 500);
+    }, 3200);
+  }
 })();
 </script>
 </body>

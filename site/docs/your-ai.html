@@ -26,8 +26,22 @@
 <ul>
   <li>Attach an image or a file with the buttons in the tool row.</li>
   <li>Open the relevant files.</li>
-  <li>In a session, your AI can look up what your team is working on.</li>
 </ul>
+<h2 id="team-context">What your AI knows about the team</h2>
+<p>In a session, your AI is given a short <strong>live update</strong> before each step, so it works from what the team has decided and built instead of guessing.</p>
+<table><thead><tr><th>Part</th><th>What it tells your AI</th></tr></thead><tbody>
+  <tr><td>Pinned decisions</td><td>Calls the team pinned in chat. Your AI follows them.</td></tr>
+  <tr><td>Latest team chat</td><td>The most recent messages.</td></tr>
+  <tr><td>Files teammates sent</td><td>Which files arrived in your copy, what changed and what they define.</td></tr>
+  <tr><td>Teammates' agents</td><td>What each teammate's agent is working on right now.</td></tr>
+  <tr><td>Code others are editing</td><td>Functions a teammate or their agent holds, so yours stays out of them, and when they're free again.</td></tr>
+  <tr><td>Your other AI's work</td><td>What your Agent Panel AI and <strong>My AI</strong> each did.</td></tr>
+  <tr><td>Work sent back to you</td><td>Agent runs a teammate reviewed and returned with a note.</td></tr>
+  <tr><td>Relevant team memory</td><td>A search of what the team has said and done, run for each request.</td></tr>
+</tbody></table>
+<p><strong>Team memory.</strong> Before your AI answers, I-IDE searches the session's pinned decisions, task board, team chat and the agent runs people chose to keep, and adds the closest matches to your request. This is retrieval-augmented generation (RAG), and there's nothing to set up. Keys and passwords are masked before anything is stored.</p>
+<p><strong>See it and change it.</strong> Select the people icon, then <strong>AI &amp; sharing…</strong>. Under <strong>Your AIs' live update includes</strong>, switch any part off. <strong>Show what your AIs see right now</strong> prints the exact text they're given.</p>
+<p>To pin a decision, point at a message in chat and select the pin. It appears under <strong>Decisions</strong> in <a href="/docs/team-tab">Team activity</a> for everyone.</p>
 <h2>Approve commands</h2>
 <p>When your agent wants to run a command, a card shows you the command. Select <strong>Run</strong> to allow it or <strong>Deny</strong> to refuse it.</p>
 <div class="callout tip"><strong>Tip</strong><p>Read each command before you approve it, especially anything that deletes files or changes your Git history.</p></div>
