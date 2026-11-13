@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>I-IDE: the code editor for teams working with AI</title>
-<meta name="description" content="Every AI on your team, yours and your teammates', works from one live picture: what each agent is doing, what the team decided, and the code that just landed.">
+<title>I: build together, every AI in sync</title>
+<meta name="description" content="I is a code editor where your team and its AI agents share one live picture of the code: changes merge themselves, history needs no git, and you decide what is shared.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
 <style>{{CSS}}</style>
 </head>
@@ -15,20 +15,48 @@
   <section class="h-hero">
     <canvas id="hero-art" aria-hidden="true"></canvas>
     <div class="h-hero-copy">
-      <h1>The code editor for teams<br><span class="dim">working with AI agents</span></h1>
-      <p>Your AI, your teammates and their AIs work from one live picture:<br class="wide"> what each agent is doing, what you decided, and the code that just landed.</p>
+      <h1>Build together.<br><span class="dim">Every AI in sync.</span></h1>
+      <p>I is a code editor where your team and its AI agents<br class="wide"> share one live picture of the code.</p>
       <div class="h-actions">
-        <a class="pill" href="/download">Join the waitlist <span aria-hidden="true">»</span></a>
-        <a class="pill solid" href="/docs">Read the docs</a>
+        <a class="pill solid" href="/download">Join the waitlist <span aria-hidden="true">»</span></a>
+        <a class="pill" href="/docs/tutorial">See how it works</a>
       </div>
     </div>
     <p class="works-with">Works with the agents you already use: Claude Agent, Codex, GitHub Copilot, Cursor.</p>
   </section>
 
   <section class="h-section" id="product">
+    <div class="points">
+      <div class="point"><b>Your AI knows what the team is doing</b><span>Teammates' changes, decisions and tasks reach every AI as they happen. No stand-in code, no guessing.</span></div>
+      <div class="point"><b>Changes merge themselves</b><span>Edits to different parts of a file combine on their own. A real clash is flagged to everyone, on the file.</span></div>
+      <div class="point"><b>History without git</b><span>Every synced version is kept, with who made it. View or restore any of them in a click. Git still works.</span></div>
+      <div class="point"><b>You decide what's shared</b><span>Sync automatically or file by file. Keys and private folders never leave your machine.</span></div>
+    </div>
+    <div class="try" data-try>
+      <div class="try-head">
+        <b>Try it: two people, one file</b>
+        <div class="try-actions" role="group" aria-label="What happens">
+          <button type="button" data-case="different" aria-pressed="true">They add different functions</button>
+          <button type="button" data-case="same" aria-pressed="false">They change the same line</button>
+          <button type="button" data-case="restore" aria-pressed="false">Go back a version</button>
+        </div>
+      </div>
+      <div class="try-body">
+        <div class="try-pane"><span class="who a">Alice</span><pre data-pane="alice"></pre></div>
+        <div class="try-pane"><span class="who b">Bob</span><pre data-pane="bob"></pre></div>
+        <div class="try-pane result"><span data-result-label>Everyone's file</span><pre data-pane="result"></pre></div>
+      </div>
+      <p class="try-note" data-note></p>
+    </div>
+    <figure class="shot">
+      <img src="/docs/img/window.jpg" alt="The I window: the file folder, the Team activity panel with people, tasks and each file's sync state, the editor, and the I-mode chat." width="2200" height="1380" loading="lazy">
+    </figure>
+  </section>
+
+  <section class="h-section" id="features">
     <div class="h-head">
-      <h2>One session.<br><span class="dim">Every AI on the same page.</span></h2>
-      <p>Each person has two AIs: the Agent Panel on the left and My AI on the right. In a session, all of them share context, code and review. Choose a view below.</p>
+      <h2>One session.<br><span class="dim">Three things it does for you.</span></h2>
+      <p>Each person keeps their own AI. In a session they share context, code and review.</p>
     </div>
     <div class="app" data-app data-view="context">
       <div class="app-bar"><span class="app-dot"></span><span class="app-dot"></span><span class="app-dot"></span><span class="app-title">Shoplite checkout · example session</span></div>
@@ -48,15 +76,14 @@
             <div class="msg"><b>Pinned decision</b><span>Order ids look like ORD-0001.</span></div>
             <div class="msg"><b>Bob's agent</b><span>Working on the checkout endpoint; holds cart.py › checkout.</span></div>
             <div class="msg"><b>New from Bob</b><span>inventory.py is in your copy. Defines reserve() and release().</span></div>
-            <div class="msg"><b>Alice's other AI</b><span>Agent Panel is editing money.py › to_cents.</span></div>
             <p class="tl-event"><strong>No guessing:</strong> the AI calls Bob's real reserve() instead of writing a stand-in.</p>
           </div>
           <div class="view" data-show="files" hidden>
-            <div class="tl-head"><span>How should files move in this team?</span><span class="tl-note">Asked once</span></div>
-            <div class="rule"><span>Send my changes</span><em class="on">When an agent finishes</em></div>
-            <div class="rule"><span>Teammates' changes</span><em class="on">Review first</em></div>
-            <div class="rule"><span>Never sent</span><em>.env, keys, private paths</em></div>
-            <div class="task"><span class="who b">Bob</span><span>inventory.py arrived · +42 −3</span><em>Use theirs</em></div>
+            <div class="tl-head"><span>Files</span><span class="tl-note">Sync: Auto or Manual</span></div>
+            <div class="task"><span class="who b">Bob</span><span>cart.py · Alice and Bob changed the same lines</span><em>Conflict</em></div>
+            <div class="task"><span class="who b">Bob</span><span>orders.py arrived · +16 −0</span><em>To review</em></div>
+            <div class="task"><span class="who a">Alice</span><span>catalog.py · saved, the team doesn't have it yet</span><em>Not sent</em></div>
+            <div class="rule"><span>Never sent</span><em>.env, keys, private folders</em></div>
           </div>
           <div class="view" data-show="review" hidden>
             <div class="tl-head"><span>Agent runs</span><span class="tl-note">Accept or send back</span></div>
@@ -68,84 +95,35 @@
       </div>
     </div>
     <div class="h-tabs" role="tablist" aria-label="Session views">
-      <button type="button" role="tab" aria-selected="true" data-tab="context"><b>Shared context.</b> Every AI gets a short live note at each step: decisions, who's doing what, new code.</button>
-      <button type="button" role="tab" aria-selected="false" data-tab="files"><b>Files move with permission.</b> Choose what's sent on its own and what waits for your review.</button>
-      <button type="button" role="tab" aria-selected="false" data-tab="review"><b>Review agent work.</b> Accept a run, or send it back with a note the agent acts on.</button>
-    </div>
-  </section>
-
-  <section class="h-section" id="features">
-    <div class="h-head">
-      <h2>Built for shared code.<br><span class="dim">Careful with it too.</span></h2>
-      <p>What keeps several agents from getting in each other's way, and keeps you in control.</p>
-    </div>
-    <div class="bento">
-      <figure class="tile wide-tile">
-        <div class="tile-art"><div class="claim-sim" data-sim></div></div>
-        <figcaption><b>Function claims.</b> Agents reserve the function they're changing, so two can work in one file. Try it, then compare with file locks.</figcaption>
-      </figure>
-      <figure class="tile">
-        <div class="tile-art list">
-          <div class="msg"><b>Dave pinned</b><span>Out-of-stock errors say "Out of stock: name".</span></div>
-          <div class="msg"><b>Bob's agent, mid-run</b><span>Switched to the pinned wording.</span></div>
-        </div>
-        <figcaption><b>Pinned decisions.</b> Pin a chat message and every agent follows it, even one already running.</figcaption>
-      </figure>
-      <figure class="tile">
-        <div class="tile-art list">
-          <div class="rule"><span>Sharing level</span><em>Actions</em></div>
-          <div class="rule"><span>Private paths</span><em>secrets/, notes/</em></div>
-          <div class="rule"><span>Pause sharing</span><em>Off</em></div>
-        </div>
-        <figcaption><b>You choose what's shared.</b> From nothing to everything, with private paths that never leave your machine.</figcaption>
-      </figure>
-      <figure class="tile">
-        <div class="tile-art list">
-          <div class="req"><span>sam@example.com wants to join</span><em>Decline</em><em class="on">Approve</em></div>
-          <div class="rule"><span>Agent commands</span><em>Run, deny or always run</em></div>
-        </div>
-        <figcaption><b>Owner approval and limits.</b> Invites only let people ask, and agents' commands wait for you.</figcaption>
-      </figure>
-      <figure class="tile">
-        <div class="tile-art list">
-          <div class="rule"><span>Alice's app · port 3000</span><em class="on">Open</em></div>
-          <div class="rule"><span>Reloads when she changes a file</span><em>Live</em></div>
-        </div>
-        <figcaption><b>Shared previews.</b> Give teammates a private link to the app on your localhost.</figcaption>
-      </figure>
+      <button type="button" role="tab" aria-selected="true" data-tab="context"><b>Shared context.</b> Every AI gets a short live note at each step.</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="files"><b>Files you can track.</b> In sync, not sent, to review or in conflict, per file.</button>
+      <button type="button" role="tab" aria-selected="false" data-tab="review"><b>Reviewed agent work.</b> Accept a run, or send it back with a note.</button>
     </div>
   </section>
 
   <section class="h-section" id="benchmarks">
     <div class="h-head">
-      <h2>More agents working.<br><span class="dim">Tested up to 25 at once.</span></h2>
-      <p>File locks cap a team at one agent per file. Our benchmark compares that with function claims across 4 files of 10 functions each.</p>
+      <h2>Two agents, one file.<br><span class="dim">Tested up to 25 at once.</span></h2>
+      <p>Agents reserve the function they're changing, not the whole file. Try it, then compare with file locks.</p>
     </div>
+    <figure class="tile wide-tile">
+      <div class="tile-art"><div class="claim-sim" data-sim></div></div>
+    </figure>
     <div class="metrics">
       <div class="metric"><span>Parallel work at 25 agents</span><b>4.3×</b><small>86 agents working vs 20 with file locks</small></div>
       <div class="metric"><span>Overlaps missed</span><b>0</b><small>And 0 claims wrongly refused</small></div>
       <div class="metric"><span>Message delivery, 95th percentile</span><b>3.8 ms</b><small>25 users on localhost, network excluded</small></div>
       <div class="metric"><span>Team agent, 60-message chat</span><b>$0.0057</b><small>Estimated from token counts</small></div>
     </div>
-    <div class="scroll">
-      <table class="h-table">
-        <thead><tr><th>Agents</th><th>Claims</th><th>Working with function claims</th><th>Working with file locks</th><th>Gain</th></tr></thead>
-        <tbody>
-          <tr><td>5</td><td>25</td><td>24</td><td>17</td><td>1.4×</td></tr>
-          <tr><td>10</td><td>50</td><td>46</td><td>20</td><td>2.3×</td></tr>
-          <tr><td>25</td><td>125</td><td>86</td><td>20</td><td>4.3×</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="h-note">From a scripted benchmark on a MacBook with simulated users and agents, not real teams. Each row totals 5 trials. The network added about 87 ms to our hosted server.</p>
+    <p class="h-note">From a scripted benchmark on a MacBook with simulated users and agents, not real teams. The network added about 87 ms to our hosted server.</p>
   </section>
 
   <section class="h-final">
     <h2>Stop untangling your agents.<br><span class="dim">Let them share the work.</span></h2>
     <p>We're looking for small teams already building with AI agents on a shared codebase.</p>
     <div class="h-actions">
-      <a class="pill" href="/download">Join the waitlist <span aria-hidden="true">»</span></a>
-      <a class="pill solid" href="/docs/tutorial">See the tutorial</a>
+      <a class="pill solid" href="/download">Join the waitlist <span aria-hidden="true">»</span></a>
+      <a class="pill" href="/docs">Read the docs</a>
     </div>
   </section>
 </main>
@@ -170,6 +148,56 @@
   }
   tabs.forEach(function (tab) { tab.addEventListener("click", function () { select(tab.dataset.tab); }); });
   select("context");
+
+  // The merge demo: a local illustration of what syncing does, nothing is sent.
+  var tryRoot = document.querySelector("[data-try]");
+  if (tryRoot) {
+    var base = "class Cart:\n    def total(self):\n        return 0\n";
+    var cases = {
+      different: {
+        alice: base + "\n    def add(self, item):\n        self.items.append(item)\n",
+        bob: base + "\n    def remove(self, item):\n        self.items.remove(item)\n",
+        result: base + "\n    def add(self, item):\n        self.items.append(item)\n\n    def remove(self, item):\n        self.items.remove(item)\n",
+        label: "Everyone's file",
+        note: "Merged on its own. Both functions are kept, and both people end up with the same file.",
+        tone: "ok"
+      },
+      same: {
+        alice: "class Cart:\n    def total(self):\n        return sum(self.items)\n",
+        bob: "class Cart:\n    def total(self):\n        return len(self.items)\n",
+        result: "cart.py   conflict\nAlice and Bob changed the same lines\n\nShown to everyone in the session.\nPick a version, or ask your AI to merge.",
+        label: "Team activity",
+        note: "A real clash is never merged silently. Everyone sees it on the file until it's sorted out.",
+        tone: "bad"
+      },
+      restore: {
+        alice: "Versions of cart.py\n\n  Bob    2 min ago   newest\n  Alice  14 min ago\n  Bob    1 h ago",
+        bob: "class Cart:\n    def total(self):\n        return len(self.items)\n",
+        result: "class Cart:\n    def total(self):\n        return sum(self.items)\n",
+        label: "After Restore (Alice, 14 min ago)",
+        note: "Every synced version is kept with who made it. Restore one and it becomes the newest. No git needed.",
+        tone: "ok"
+      }
+    };
+    var showCase = function (name) {
+      var chosen = cases[name];
+      ["alice", "bob", "result"].forEach(function (pane) {
+        tryRoot.querySelector('[data-pane="' + pane + '"]').textContent = chosen[pane];
+      });
+      tryRoot.querySelector("[data-result-label]").textContent = chosen.label;
+      var note = tryRoot.querySelector("[data-note]");
+      note.textContent = chosen.note;
+      note.className = "try-note " + chosen.tone;
+      tryRoot.querySelector(".result").className = "try-pane result " + chosen.tone;
+      tryRoot.querySelectorAll("[data-case]").forEach(function (button) {
+        button.setAttribute("aria-pressed", String(button.dataset.case === name));
+      });
+    };
+    tryRoot.querySelectorAll("[data-case]").forEach(function (button) {
+      button.addEventListener("click", function () { showCase(button.dataset.case); });
+    });
+    showCase("different");
+  }
 
   // Hero art: lines that fan out at the top and bottom and pinch to a stem, an I drawn from many paths.
   var canvas = document.getElementById("hero-art");

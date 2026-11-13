@@ -1,25 +1,34 @@
 <article data-page="/docs/team-tab" data-group="Work with your team" data-title="Team activity">
 <h1>Team activity</h1>
-<p class="lede">The Team activity panel, beside your files, shows what's happening in the session right now: who's here and what each person is editing, the tasks, and what changed.</p>
-<figure class="small"><img width="299" height="709" src="/docs/img/team-activity.jpg" alt="Team activity: Bob editing README.md with an amber editing label, Carol idle, then tasks from a shared plan, each with a to do label and its owner in their color." loading="lazy"><figcaption>Team activity during a session.</figcaption></figure>
-<p>Open it with its button in the status bar, or from the people menu. It sits below your files; drag the bar between them to share the space.</p>
-<h2>People</h2>
-<p>Lists who is present and which file and line each person is on, with a colored label: amber for <strong>editing</strong>, blue for <strong>agent running</strong>, grey for <strong>idle</strong>. Each person keeps one color everywhere. Counts appear only when they're above zero:</p>
-<table><thead><tr><th>Count</th><th>Meaning</th></tr></thead><tbody>
-  <tr><td><strong>Merges</strong></td><td>Edits made at the same time that were merged live.</td></tr>
-  <tr><td><strong>Divergences</strong></td><td>Changes that drifted from the shared reference.</td></tr>
-  <tr><td><strong>Lane warnings</strong></td><td>Edits outside the person's assigned task.</td></tr>
-  <tr><td><strong>Agent collisions</strong></td><td>Times an agent stepped back from a function another agent held.</td></tr>
-  <tr><td><strong>Shared key cost</strong></td><td>Estimated spending on the service's AI key in this session.</td></tr>
+<p class="lede">Team activity is its own panel, next to your file folder. It shows who's here, the tasks, and where every file stands between you and the team.</p>
+<figure class="small"><img width="274" height="488" src="/docs/img/team-activity.jpg" alt="Team activity: Bob under People, then Files with a sync switch set to Manual and four files marked conflict, to review, not sent and in sync." loading="lazy"><figcaption>Team activity during a session.</figcaption></figure>
+<p>It opens by itself when you start or join a session. Its button in the status bar shows or hides it, and you can drag the line between it and the file folder to resize it.</p>
+
+<h2>People and tasks</h2>
+<p><strong>People</strong> lists who is present and which file and line each person is on. A colored label shows what they're doing: amber for <strong>editing</strong>, blue for <strong>agent running</strong>, grey for <strong>idle</strong>. <strong>Tasks</strong> come from a plan someone shared; each has an owner and a status. See <a href="/docs/tasks">Tasks</a>.</p>
+
+<h2>Sync: Auto or Manual</h2>
+<p>The switch at the top of <strong>Files</strong> decides how files move. You can change it at any time.</p>
+<table><thead><tr><th>Mode</th><th>What happens</th></tr></thead><tbody>
+  <tr><td><strong>Auto</strong></td><td>Your saves go to the team, and teammates' changes arrive on their own and merge with your work. Open files are edited live. Every AI sees changes right away.</td></tr>
+  <tr><td><strong>Manual</strong></td><td>Nothing leaves your machine until you press the sync button on a file, or <strong>Sync all</strong>. Teammates' changes wait for you. Their AIs wait for what you haven't sent.</td></tr>
 </tbody></table>
-<h2>Agent runs</h2>
-<p>Shows the tasks agents in the session took on: the goal, how each one went, what it changed and what the team thought. Teammates can select <strong>Accept</strong> or <strong>Needs changes</strong> on a finished run. See <a href="/docs/agent-runs">Agent runs and sharing</a>.</p>
-<h2>This week</h2>
-<p>Shows the conflicts caught across your sessions in the last 7 days. Select <strong>Copy summary</strong> to get a one-line status you can paste into an update.</p>
-<h2>Changed this session</h2>
-<p>Lists files changed during the session. Select a file to open it.</p>
-<h2>Syncing</h2>
-<p>Lists the files being shared, with a <strong>Sync</strong> button for each.</p>
-<h2>Reference</h2>
-<p>Shows the <a href="/docs/reference-doc">shared reference</a>, if your team has one.</p>
+<p>The gear next to the switch holds the finer choices: what teammates see of your AI's work, private paths, and a pause.</p>
+
+<h2>What each file's label means</h2>
+<table><thead><tr><th>Label</th><th>Meaning</th><th>What you can do</th></tr></thead><tbody>
+  <tr><td><strong>in sync</strong></td><td>Your copy and the team's are the same.</td><td>Nothing. It also says who has your version.</td></tr>
+  <tr><td><strong>not sent</strong></td><td>You saved changes the team doesn't have.</td><td>Press the sync button.</td></tr>
+  <tr><td><strong>to review</strong></td><td>A teammate's version is waiting. Your copy is unchanged.</td><td>See the difference, merge both, or use theirs.</td></tr>
+  <tr><td><strong>conflict</strong></td><td>Two people changed the same lines.</td><td>Keep yours, use theirs, or ask your AI to merge.</td></tr>
+  <tr><td><strong>private</strong></td><td>A secrets file, a private path, or a file with a key in it.</td><td>It stays on your machine.</td></tr>
+</tbody></table>
+
+<h2>Merging and conflicts</h2>
+<p>When you and a teammate changed different parts of a file, the two versions merge on their own. If you each added a different function, both are kept.</p>
+<p>When you both changed the same lines, nothing is merged silently. The file is marked <strong>conflict</strong> for everyone in the session, with both names, until the person holding both versions picks one or merges them.</p>
+
+<h2>Versions, without git</h2>
+<p>Every version of a file that reaches the team is kept, with who made it and when. Select the clock on a file to list them. <strong>View</strong> opens the file with what changed since that version marked. <strong>Restore</strong> puts that version back; it then counts as your newest change.</p>
+<p>Git keeps working as usual if your project uses it. See <a href="/docs/git">Git</a>.</p>
 </article>

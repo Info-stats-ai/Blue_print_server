@@ -60,6 +60,9 @@ const DOC_PAGES: &[(&str, &str)] = &[
     ("faq", include_str!("../site/docs/faq.html")),
 ];
 
+/// The app icon, also the browser-tab icon.
+const LOGO: &[u8] = include_bytes!("../site/logo.png");
+
 const DOC_OVERVIEW: &str = include_str!("../site/docs/overview.html");
 
 const DOC_IMAGES: &[(&str, &[u8])] = &[
@@ -87,7 +90,11 @@ fn indexable(template: &str, path: &str) -> Response {
 }
 
 fn html(template: &str) -> Response {
-    let body = template.replace("{{CSS}}", CSS).replace("{{NAV}}", NAV).replace("{{SIM}}", SIM);
+    let body = template
+        .replace("{{CSS}}", CSS)
+        .replace("{{NAV}}", NAV)
+        .replace("{{SIM}}", SIM)
+        .replacen("</head>", "<link rel=\"icon\" type=\"image/png\" href=\"/logo.png\">\n</head>", 1);
     (
         [
             (header::CONTENT_TYPE, "text/html; charset=utf-8"),
@@ -104,6 +111,11 @@ pub fn page(path: &str) -> Response {
     match path.trim_end_matches('/') {
         "" => indexable(HOME, "/"),
         "/download" => indexable(DOWNLOAD, "/download"),
+        "/logo.png" | "/favicon.ico" => (
+            [(header::CONTENT_TYPE, "image/png"), (header::CACHE_CONTROL, "public, max-age=86400")],
+            LOGO,
+        )
+            .into_response(),
         "/robots.txt" => plain(format!("User-agent: *\nAllow: /\nSitemap: {PUBLIC_SITE}/sitemap.xml\n"), "text/plain"),
         "/sitemap.xml" => plain(sitemap(), "application/xml"),
         "/docs" => doc_page(DOC_OVERVIEW),
