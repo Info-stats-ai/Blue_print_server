@@ -2286,6 +2286,15 @@ enum ClientMessage {
     // "I received this file": whether it is now in the sender's copy or
     // waiting for their review. Lets everyone see who has which version.
     FileAck { path: String, applied: bool },
+    // Two people changed the same lines of a file, found by the one holding
+    // both versions; everyone is told. `resolved` clears it again.
+    FileConflict {
+        path: String,
+        #[serde(default)]
+        with: Option<String>,
+        #[serde(default)]
+        resolved: bool,
+    },
     // What a saved-but-unsent file defines (signatures only, never its
     // body), so teammates' AIs can build against it without waiting.
     FilePreview {
@@ -2650,6 +2659,19 @@ async fn handle_client_message(
                     &json!({"type": "agent_activity", "user_id": user_id, "activity": activity}),
                 )
                 .await;
+            None
+        }
+        ClientMessage::FileConflict { path, with, resolved } => {
+            if crate::guard::is_safe_relative_path(&path) {
+                let with: Option<String> = with.map(|with| trimmed(&with, 80));
+                state
+                    .hub
+                    .broadcast(
+                        session_id,
+                        &json!({"type": "file_conflict", "path": path, "user_id": user_id, "with": with, "resolved": resolved}),
+                    )
+                    .await;
+            }
             None
         }
         ClientMessage::FilePreview { path, outline } => {
@@ -3130,6 +3152,21 @@ async fn handle_file_save_message(
             .broadcast(session_id, &json!({"type": "file_change", "change": change}))
             .await;
         persist_changes(state, session_id).await;
+    }
+    // Every shared version is kept, so the team can go back to any of them
+    // without git.
+    if let Err(error) = crate::history::record(
+        &state.pool,
+        session_id,
+        &path,
+        &content,
+        known_content.as_deref(),
+        user_id,
+        origin.as_deref(),
+    )
+    .await
+    {
+        eprintln!("history: recording {path} for {session_id} failed: {error}");
     }
     check_work_lane(state, session_id, &path, user_id).await;
     trigger_watcher(state, session_id, &path, &previous_content, &content).await;

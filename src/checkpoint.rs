@@ -129,6 +129,14 @@ async fn write_checkpoint(
     files: &HashMap<String, String>,
     blueprint: &str,
 ) -> anyhow::Result<()> {
+    // Live editing changes files keystroke by keystroke without a "save" to
+    // hang a version on, so the history takes one here, every few minutes,
+    // for whatever changed since its newest version.
+    for (path, content) in files {
+        if crate::guard::file_refusal(path, content).is_none() {
+            crate::history::record(&state.pool, session_id, path, content, None, "live", Some("live")).await?;
+        }
+    }
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
     let files_json = serde_json::to_string(files)?;

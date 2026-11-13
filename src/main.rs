@@ -10,6 +10,7 @@ mod extensions;
 mod github;
 mod guard;
 mod handlers;
+mod history;
 mod listen;
 mod memory;
 mod models;
@@ -112,6 +113,11 @@ async fn main() {
 
     state.hub.set_event_sink(stats::spawn_writer(state.pool.clone()));
     state.hub.ai_budget.restore(&state.pool).await;
+    if let Ok(pruned) = history::prune_blobs(&state.pool).await
+        && pruned > 0
+    {
+        println!("history: removed {pruned} unused file version(s)");
+    }
 
     let bundled = extensions::load_bundled(&state.pool, std::env::var("EXTENSIONS_DIR").ok().as_deref()).await;
     if bundled > 0 {
@@ -192,6 +198,8 @@ async fn main() {
         .route("/sessions/{id}/invite", post(handlers::invite_to_session))
         .route("/sessions/{id}/join-requests/{user_id}", put(handlers::answer_join_request))
         .route("/sessions/{id}/memory", get(memory::search_handler))
+        .route("/sessions/{id}/history", get(history::list_handler))
+        .route("/sessions/{id}/history/{version}", get(history::version_handler))
         .route(
             "/contracts",
             post(handlers::create_contract).get(handlers::list_contracts),

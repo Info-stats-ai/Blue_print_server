@@ -98,6 +98,16 @@ async def main():
     ack = await a.wait(lambda m: m.get("type") == "file_ack")
     check("Alice hears Bob is reviewing her file", ack is not None and ack["user_id"] == bob["user_id"] and ack["applied"] is False, ack)
 
+    # A clash on the same lines is signalled to everyone, and cleared again.
+    await b.send({"type": "file_conflict", "path": "shoplite/cart.py", "with": alice["user_id"]})
+    for peer, name in ((a, "Alice"), (b, "Bob")):
+        conflict = await peer.wait(lambda m: m.get("type") == "file_conflict")
+        check(f"{name} is told about the conflict", conflict is not None and conflict["user_id"] == bob["user_id"]
+              and conflict["with"] == alice["user_id"] and conflict["resolved"] is False, conflict)
+    await b.send({"type": "file_conflict", "path": "shoplite/cart.py", "resolved": True})
+    cleared = await a.wait(lambda m: m.get("type") == "file_conflict")
+    check("Everyone hears when it's resolved", cleared is not None and cleared["resolved"] is True, cleared)
+
     # Outlines of unsent files: signatures reach teammates, masked.
     await a.send({"type": "file_preview", "path": "shoplite/catalog.py",
                   "outline": ["class Catalog", "def add(self, item, name, price)", f"API = '{KEY}'"]})
@@ -106,6 +116,27 @@ async def main():
     check("Outlines are masked", preview is not None and KEY not in json.dumps(preview), preview)
     await a.send({"type": "file_preview", "path": ".env", "outline": ["SECRET"]})
     check("No outline for a secrets file", await b.wait(lambda m: m.get("type") == "file_preview", timeout=0.6) is None)
+
+    # Built-in history: every shared version is kept and can be read back.
+    await a.send({"type": "file_save", "path": "shoplite/cart.py", "content": "class Cart:\n    def add(self):\n        pass\n"})
+    await b.wait(lambda m: saved(m, "shoplite/cart.py"))
+    await b.send({"type": "file_save", "path": "shoplite/cart.py", "content": "class Cart:\n    def add(self):\n        return 1\n", "origin": "agent"})
+    await a.wait(lambda m: saved(m, "shoplite/cart.py") and m.get("sender") == bob["user_id"])
+    versions = call("GET", f"/sessions/{session}/history?path=shoplite/cart.py", token=bob["token"])
+    check("History lists each version, newest first",
+          [v["user_id"] for v in versions] == [bob["user_id"], alice["user_id"], alice["user_id"]], versions)
+    check("History says who made it and what changed",
+          versions[0]["origin"] == "agent" and (versions[0]["added"], versions[0]["removed"]) == (1, 1), versions[0])
+    first = call("GET", f"/sessions/{session}/history/{versions[-1]['id']}", token=bob["token"])
+    check("An old version can be read back in full", first["content"] == "class Cart:\n    pass\n", first)
+    carol = call("POST", "/auth/register", {"email": "carol@example.test", "password": "e2e-only-password"})
+    try:
+        call("GET", f"/sessions/{session}/history", token=carol["token"])
+        outsider = "allowed"
+    except Exception as error:
+        outsider = str(error)
+    check("Someone outside the session can't read its history", outsider != "allowed", outsider)
+    check("Refused files leave no version", all(v["path"] == "shoplite/cart.py" for v in call("GET", f"/sessions/{session}/history", token=alice["token"])))
 
     # A message larger than the limit is refused by the connection.
     try:
