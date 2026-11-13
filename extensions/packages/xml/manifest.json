@@ -1,0 +1,1 @@
+{"name":"XML","version":"0.2.0","description":"XML syntax support.","authors":["sweetppro","notpeter","moilolon"],"repository":"https://github.com/sweetppro/zed-xml","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

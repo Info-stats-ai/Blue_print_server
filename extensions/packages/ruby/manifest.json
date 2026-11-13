@@ -1,0 +1,1 @@
+{"name":"Ruby","version":"0.16.22","description":"Ruby support.","authors":["Vitaly Slobodin <vitaliy.slobodin@gmail.com>"],"repository":"https://github.com/zed-extensions/ruby","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers","debug-adapters"]}

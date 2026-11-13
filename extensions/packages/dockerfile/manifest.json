@@ -1,0 +1,1 @@
+{"name":"Dockerfile","version":"0.3.0","description":"Dockerfile and Docker Compose support.","authors":["d1y <chenhonzho@gmail.com>","joshmeads <github@joshmeads.com>"],"repository":"https://github.com/zed-extensions/dockerfile","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers","debug-adapters"]}

@@ -1,0 +1,1 @@
+{"name":"Zig","version":"0.4.2","description":"Zig support.","authors":["Allan Calix <contact@acx.dev>"],"repository":"https://github.com/zed-extensions/zig","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

@@ -1,0 +1,1 @@
+{"name":"Astro","version":"0.2.2","description":"Astro support.","authors":["Alvaro Gaona <alvgaona@gmail.com>","0xk1f0 <dev@k1f0.dev>"],"repository":"https://github.com/zed-extensions/astro","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

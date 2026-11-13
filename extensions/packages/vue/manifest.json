@@ -1,0 +1,1 @@
+{"name":"Vue","version":"0.4.1","description":"Vue support.","authors":["Zed Industries <support@zed.dev>"],"repository":"https://github.com/zed-extensions/vue","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

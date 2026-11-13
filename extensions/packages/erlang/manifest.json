@@ -1,0 +1,1 @@
+{"name":"Erlang","version":"0.3.2","description":"Erlang support.","authors":["Dairon M <dairon.medina@gmail.com>","Fabian Bergström <fabian@fmbb.se>"],"repository":"https://github.com/zed-extensions/erlang","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

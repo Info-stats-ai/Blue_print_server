@@ -1,0 +1,1 @@
+{"name":"GraphQL","version":"1.0.6","description":"GraphQL extension for Zed","authors":["Ivan Buryak <ivan.buryak@gmail.com>"],"repository":"https://github.com/11bit/zed-extension-graphql","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

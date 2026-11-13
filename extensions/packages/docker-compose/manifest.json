@@ -1,0 +1,1 @@
+{"name":"Docker Compose","version":"0.1.0","description":"Syntax highlighting for Docker Compose files","authors":["eth0net <eth0net@pm.me>"],"repository":"https://github.com/eth0net/zed-docker-compose","schema_version":1,"wasm_api_version":"0.0.6","provides":["language-servers"]}

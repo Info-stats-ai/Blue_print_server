@@ -1,0 +1,1 @@
+{"name":"Svelte","version":"0.2.11","description":"Svelte support","authors":["Zed Industries <support@zed.dev>"],"repository":"https://github.com/zed-extensions/svelte","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

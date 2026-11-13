@@ -1,0 +1,1 @@
+{"name":"Prisma","version":"0.1.10","description":"Prisma support.","authors":["Matthew Gramigna <matthewgramigna@gmail.com>","Victor Quiroz <git@victorhqc.com>"],"repository":"https://github.com/zed-extensions/prisma","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

@@ -1,0 +1,1 @@
+{"name":"Nix","version":"0.1.5","description":"Nix support.","authors":["Hasit Mistry <hasitnm@gmail.com>"],"repository":"https://github.com/zed-extensions/nix","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

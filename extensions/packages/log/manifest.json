@@ -1,0 +1,1 @@
+{"name":"LOG","version":"0.0.7","description":"Syntax highlighting for log files.","authors":["nervenes","notpeter","d1y"],"repository":"https://github.com/nervenes/zed-log","schema_version":1,"wasm_api_version":null,"provides":["languages","grammars"]}
