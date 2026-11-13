@@ -1,58 +1,33 @@
-<article data-page="/docs/live-editing" data-group="Work with your team" data-title="Live editing and syncing">
-<h1>Live editing and syncing</h1>
-<p class="lede">When people work on the same file in a session, their edits appear for each other as they type. This page explains how files get shared.</p>
-<h2>Edit a file together</h2>
-<ol>
-  <li>Open a file while you're in a session. It starts syncing, and it appears under <strong>Syncing</strong> in <strong>Team activity</strong>.</li>
-  <li>Your teammate opens the same file.</li>
-  <li>Type as usual. Edits from both of you merge as you go, and you can undo your own changes with <kbd>Cmd</kbd>+<kbd>Z</kbd>.</li>
-</ol>
-<p>People are never blocked from typing. <a href="/docs/claims">Claims</a> only coordinate agents.</p>
-<h2>See who is where</h2>
-<p>Open <strong>Team activity</strong>. <strong>People</strong> lists who is present, which file each person has open and what their agent is doing.</p>
-<h2>Sync one file</h2>
-<ul>
-  <li>Open the file and select the circle button in the tool row.</li>
-  <li>Or find the file under <strong>Syncing</strong> in <strong>Team activity</strong> and select <strong>Sync</strong>.</li>
-</ul>
-<h2>Share files teammates don't have</h2>
-<ol>
-  <li>Select the people icon, then <strong>Share files…</strong>.</li>
-  <li>Enter a folder, or leave it blank for the whole project.</li>
-  <li>Select <strong>Share</strong>.</li>
-</ol>
-<p>Files listed in <code>.gitignore</code> are skipped. In a <strong>You lead</strong> session, only the leader can do this.</p>
-<h2 id="sync-your-agents-work">Choose how files move</h2>
-<p>The first time you're in a session, the I-mode panel asks two questions. Nothing moves on its own until you answer.</p>
-<p><strong>Send my changes:</strong></p>
-<table><thead><tr><th>Choice</th><th>What's sent, and when</th></tr></thead><tbody>
-  <tr><td><strong>On every save</strong></td><td>Any project file you or your agents create or change, a moment after it's saved.</td></tr>
-  <tr><td><strong>When an agent finishes</strong></td><td>The files an agent changed, when its run finishes. This covers both your AIs: the Agent Panel and My AI.</td></tr>
-  <tr><td><strong>When I press Sync</strong></td><td>Nothing, until you select <strong>Sync to team</strong>.</td></tr>
+<article data-page="/docs/live-editing" data-group="Work with your team" data-title="Syncing and merging">
+<h1>Syncing and merging</h1>
+<p class="lede">Files move between you and your team when they're saved. Changes to different parts of a file merge on their own, and every version is kept, so you don't need git to work together.</p>
+
+<h2>Choose how files move</h2>
+<p>Use the switch at the top of <strong>Files</strong> in <a href="/docs/team-tab">Team activity</a>. You can change it at any time.</p>
+<table><thead><tr><th>Mode</th><th>Your files</th><th>Teammates' files</th></tr></thead><tbody>
+  <tr><td><strong>Auto</strong></td><td>Sent a moment after you save them.</td><td>Arrive on their own and merge with your work.</td></tr>
+  <tr><td><strong>Manual</strong></td><td>Sent only when you press sync on a file, or <strong>Sync all</strong>.</td><td>Wait for you, marked <strong>to review</strong>.</td></tr>
 </tbody></table>
-<p><strong>Teammates' changes:</strong></p>
+<p>In Manual, teammates' AIs work without what you haven't sent yet. That's the trade for keeping your work to yourself until it's ready.</p>
+
+<h2>How merging works</h2>
+<p>When a teammate's version of a file arrives and you've changed it too:</p>
 <ul>
-  <li><strong>Add automatically</strong>: files land in your copy right away. A file you have unsaved edits to is kept as yours.</li>
-  <li><strong>Review first</strong>: each file waits in the chat as a card. Select <strong>View changes</strong>, then <strong>Use theirs</strong> to take it.</li>
+  <li><strong>Different parts changed:</strong> both sets of changes are kept.</li>
+  <li><strong>Both added something in the same place</strong>, such as two new functions: both are kept, and both of you end up with the same file.</li>
+  <li><strong>The same lines changed two ways:</strong> nothing is merged. The file is marked <strong>conflict</strong> for everyone in the session until someone picks a version, merges them, or asks their AI to.</li>
 </ul>
-<p>Whichever you choose:</p>
-<ul>
-  <li>Files ignored by Git, your <a href="/docs/agent-runs#choose-what-you-share">private paths</a> and the protected files below are never sent.</li>
-  <li>Nothing is sent on its own while sharing is paused.</li>
-  <li>A run you stopped, or one that failed, isn't sent with <strong>When an agent finishes</strong>: its files may be half done. A banner offers <strong>Sync to team</strong> for those.</li>
-  <li>Deleting a file isn't sent; tell your team instead.</li>
-</ul>
-<p>To change your answers, select the people icon, then <strong>AI &amp; sharing</strong>.</p>
-<h2>What your AIs learn when a file arrives</h2>
-<p>When a teammate's file reaches you, both your AIs are told in their next live update: who sent it, what changed, and the functions and classes it defines. If it's still waiting for your review, they're told it isn't in your copy yet. That way they use your teammate's real code instead of guessing at it.</p>
-<h2>Files that are never synced</h2>
-<p>To protect your secrets, agents and teammates can't read or write files that usually hold credentials:</p>
-<ul>
-  <li><code>.env</code> and <code>.env.*</code> files</li>
-  <li><code>.ssh</code>, <code>.aws</code> and <code>.gnupg</code> folders</li>
-  <li><code>.npmrc</code>, <code>.pypirc</code> and <code>.netrc</code></li>
-  <li>Files starting with <code>id_rsa</code>, <code>id_ed25519</code> or <code>credentials</code></li>
-  <li>Files ending in <code>.pem</code>, <code>.key</code>, <code>.p12</code>, <code>.pfx</code> or <code>.keystore</code></li>
-</ul>
-<div class="callout important"><strong>Important</strong><p>This list catches common names, not every secret. A key inside an ordinary source file can still be synced, so keep secrets out of your code.</p></div>
+<p>A file in conflict or waiting for review is never sent on its own, so no one's work is overwritten without a choice.</p>
+
+<h2>Go back to an earlier version</h2>
+<p>Every version that reaches the team is kept, with who made it and when. In <strong>Files</strong>, select the clock on a file, then <strong>View</strong> or <strong>Restore</strong>. A restored version becomes your newest change. Git keeps working as usual if your project uses it.</p>
+
+<h2>What your AIs learn</h2>
+<p>When a teammate's file reaches you, your AIs are told who sent it, what changed and what it defines, so they use the real code instead of guessing. A version still waiting for your review is readable by them too, without touching your copy.</p>
+
+<h2>Live typing (experimental)</h2>
+<p>With <strong>Auto</strong> sync, you can also turn on <strong>Live typing in open files</strong> from the gear in <strong>Files</strong>. Edits then appear for each other keystroke by keystroke. It's off by default while we finish testing it.</p>
+
+<h2>Files that are never sent</h2>
+<p>Files that usually hold credentials (<code>.env</code>, <code>.ssh</code>, <code>.aws</code>, keys and certificates), your private paths, and any file that looks like it contains a key or password stay on your machine. Keys pasted into chat are masked. This catches common cases, not every secret, so keep secrets out of your code.</p>
 </article>
