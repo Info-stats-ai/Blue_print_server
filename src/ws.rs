@@ -49,6 +49,9 @@ struct Subscriber {
     user_id: String,
     tx: mpsc::UnboundedSender<Message>,
     pending: Arc<AtomicUsize>,
+    // The client applies file patches, so it gets a teammate's change as
+    // the lines that changed rather than the whole file.
+    patches: bool,
 }
 
 /// What a newly connected socket reads its outgoing messages from.
@@ -656,9 +659,47 @@ impl Hub {
                 user_id: user_id.to_string(),
                 tx,
                 pending: pending.clone(),
+                patches: false,
             });
         }
         PeerConnection { id, rx, pending }
+    }
+
+    /// Marks one connection as able to apply file patches.
+    pub async fn set_patches(&self, session_id: &str, connection_id: u64, patches: bool) {
+        let map = self.inner.read().await;
+        if let Some(channel) = map.get(session_id)
+            && let Ok(mut subscribers) = channel.subscribers.lock()
+            && let Some(subscriber) = subscribers.iter_mut().find(|subscriber| subscriber.id == connection_id)
+        {
+            subscriber.patches = patches;
+        }
+    }
+
+    /// Sends a saved file to everyone in the session: as a patch to
+    /// connections that apply patches, as the whole file to the rest.
+    pub async fn broadcast_file(&self, session_id: &str, full: &serde_json::Value, patch: Option<&serde_json::Value>) {
+        let Some(patch) = patch else {
+            return self.broadcast(session_id, full).await;
+        };
+        let full = Message::Text(full.to_string().into());
+        let patch = Message::Text(patch.to_string().into());
+        let map = self.inner.read().await;
+        let Some(channel) = map.get(session_id) else {
+            return;
+        };
+        let Ok(mut subscribers) = channel.subscribers.lock() else {
+            return;
+        };
+        subscribers.retain(|subscriber| {
+            if subscriber.pending.load(Ordering::Relaxed) >= MAX_PENDING_PER_CONNECTION {
+                eprintln!("ws: dropping a stalled connection in session {session_id}");
+                return false;
+            }
+            subscriber.pending.fetch_add(1, Ordering::Relaxed);
+            let message = if subscriber.patches { patch.clone() } else { full.clone() };
+            subscriber.tx.send(message).is_ok()
+        });
     }
 
     /// Stops delivering to one closed connection.
@@ -1788,7 +1829,14 @@ pub struct WsQuery {
     // proxy and server logs.
     #[serde(default)]
     pub token: Option<String>,
+    // What the client can handle, comma-separated: "file_patch" means it
+    // applies patches instead of needing every file whole.
+    #[serde(default)]
+    pub features: Option<String>,
 }
+
+/// What this server can handle, sent in the snapshot so clients know.
+const SERVER_FEATURES: &[&str] = &["file_patch"];
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
@@ -1820,10 +1868,14 @@ pub async fn ws_handler(
     }
 
     let session_id = params.session_id;
+    let patches = params
+        .features
+        .as_deref()
+        .is_some_and(|features| features.split(',').any(|feature| feature.trim() == "file_patch"));
     Ok(ws
         .max_message_size(crate::guard::MAX_WS_MESSAGE_BYTES)
         .max_frame_size(crate::guard::MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| handle_socket(socket, state, session_id, user_id)))
+        .on_upgrade(move |socket| handle_socket(socket, state, session_id, user_id, patches)))
 }
 
 /// A readable name for every member of the session, keyed by user id. Users
@@ -1854,8 +1906,12 @@ async fn handle_socket(
     state: AppState,
     session_id: String,
     user_id: String,
+    patches: bool,
 ) {
     let mut connection = state.hub.add_peer(&session_id, &user_id).await;
+    if patches {
+        state.hub.set_patches(&session_id, connection.id, true).await;
+    }
     // A channel with no files yet might be brand new, or might be an empty
     // shell the server just recreated after a restart — rehydrate from the
     // last DB checkpoint before anyone reads from it. A no-op (fast: one
@@ -1956,6 +2012,7 @@ async fn handle_socket(
         "agent_listens": agent_listens,
         "invite_token": invite_token,
         "type": "snapshot",
+        "features": SERVER_FEATURES,
         "contracts": contracts,
         "intents": intents,
         "peers": peers,
@@ -2178,6 +2235,26 @@ enum ClientMessage {
     FileSave {
         path: String,
         content: String,
+        #[serde(default)]
+        origin: Option<String>,
+    },
+    // A saved file sent as the lines that changed since `base_hash`, the
+    // version the sender last knew the team had. The server applies it only
+    // to that exact version and otherwise asks for the whole file.
+    FilePatch {
+        path: String,
+        base_hash: String,
+        hash: String,
+        patch: Vec<crate::patch::PatchOp>,
+        #[serde(default)]
+        origin: Option<String>,
+    },
+    // A client couldn't apply a patch (its copy wasn't the base) and wants
+    // the whole file. `sender` and `origin` describe the change it missed.
+    FileFetch {
+        path: String,
+        #[serde(default)]
+        sender: Option<String>,
         #[serde(default)]
         origin: Option<String>,
     },
@@ -2532,8 +2609,48 @@ async fn handle_client_message(
             if let Some(reason) = crate::guard::file_refusal(&path, &content) {
                 return Some(crate::guard::notice(&reason));
             }
-            handle_file_save_message(state, session_id, user_id, path, content, origin).await;
+            handle_file_save_message(state, session_id, user_id, path, content, origin, None).await;
             None
+        }
+        ClientMessage::FilePatch {
+            path,
+            base_hash,
+            hash,
+            patch,
+            origin,
+        } => {
+            let resend = json!({"type": "file_resend", "path": path});
+            let Some(known) = state.hub.get_file(session_id, &path).await else {
+                return Some(resend);
+            };
+            if crate::patch::content_hash(&known) != base_hash {
+                return Some(resend);
+            }
+            let Some(content) = crate::patch::apply(&known, &patch) else {
+                return Some(resend);
+            };
+            if crate::patch::content_hash(&content) != hash {
+                return Some(resend);
+            }
+            if let Some(reason) = crate::guard::file_refusal(&path, &content) {
+                return Some(crate::guard::notice(&reason));
+            }
+            handle_file_save_message(state, session_id, user_id, path, content, origin, Some((base_hash, hash, patch)))
+                .await;
+            None
+        }
+        ClientMessage::FileFetch { path, sender, origin } => {
+            if !crate::guard::is_safe_relative_path(&path) || crate::guard::is_sensitive_path(&path) {
+                return None;
+            }
+            let content = state.hub.get_file(session_id, &path).await?;
+            Some(json!({
+                "type": "file_saved",
+                "path": path,
+                "sender": sender.unwrap_or_default(),
+                "origin": origin,
+                "content": content,
+            }))
         }
         ClientMessage::ChatHistory { before_id, limit } => {
             let limit = limit.unwrap_or(SNAPSHOT_CHAT_LIMIT).clamp(1, MAX_CHAT_PAGE);
@@ -3113,6 +3230,10 @@ async fn handle_file_save_message(
     path: String,
     content: String,
     origin: Option<String>,
+    // When the sender sent only what changed: the version it applies to,
+    // the version it makes, and the change, passed on to clients that
+    // apply patches.
+    patch: Option<(String, String, Vec<crate::patch::PatchOp>)>,
 ) {
     // The agent never saves files itself, but guard against self-triggering
     // the watcher the same way chat does, for consistency.
@@ -3128,13 +3249,19 @@ async fn handle_file_save_message(
         .await;
     // Peers decide locally whether to write it (only when they don't already
     // have a different copy), so a share never clobbers someone's work.
-    state
-        .hub
-        .broadcast(
-            session_id,
-            &json!({"type": "file_saved", "path": path, "sender": user_id, "origin": origin, "content": content}),
-        )
-        .await;
+    let full = json!({"type": "file_saved", "path": path, "sender": user_id, "origin": origin, "content": content});
+    let patched = patch.map(|(base_hash, hash, ops)| {
+        json!({
+            "type": "file_patched",
+            "path": path,
+            "sender": user_id,
+            "origin": origin,
+            "base_hash": base_hash,
+            "hash": hash,
+            "patch": ops,
+        })
+    });
+    state.hub.broadcast_file(session_id, &full, patched.as_ref()).await;
     if let Some(change) = state
         .hub
         .record_file_save(

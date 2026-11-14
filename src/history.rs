@@ -9,7 +9,6 @@
 use axum::extract::{Path, Query, State};
 use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::AppState;
 use crate::auth::AuthUser;
@@ -18,9 +17,7 @@ use crate::errors::AppError;
 const VERSIONS_KEPT_PER_FILE: i64 = 200;
 const MAX_LISTED: i64 = 200;
 
-fn content_hash(content: &str) -> String {
-    Sha256::digest(content.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect()
-}
+use crate::patch::content_hash;
 
 fn line_counts(previous: &str, content: &str) -> (i64, i64) {
     use similar::{ChangeTag, TextDiff};

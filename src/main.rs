@@ -15,6 +15,7 @@ mod listen;
 mod memory;
 mod models;
 mod oauth;
+mod patch;
 mod preview;
 mod site;
 mod stats;
