@@ -28,6 +28,9 @@
 <p>When you and a teammate changed different parts of a file, the two versions merge on their own. If you each added a different function, both are kept.</p>
 <p>When you both changed the same lines, nothing is merged silently. The file is marked <strong>conflict</strong> for everyone in the session, with both names, until the person holding both versions picks one or merges them.</p>
 
+<h2>Breaking changes</h2>
+<p>When a teammate's change renames a function, changes what it takes, or removes it, I-IDE checks your own code, including work you haven't sent, for calls to it. If it finds any, a <strong>Breaking changes</strong> card shows who changed what, the old and new version, and the lines that call it.</p>
+<p>Select <strong>Ask AI to fix</strong> and your AI updates those calls for you, leaving your teammate's file alone. Your AIs are also told about open breaking changes, so new code uses the new version. Changes inside a function, or to its formatting, don't count.</p>
 <h2>Versions, without git</h2>
 <p>Every version of a file that reaches the team is kept, with who made it and when. Select the clock on a file to list them. <strong>View</strong> opens the file with what changed since that version marked. <strong>Restore</strong> puts that version back; it then counts as your newest change.</p>
 <p>Git keeps working as usual if your project uses it. See <a href="/docs/git">Git</a>.</p>
