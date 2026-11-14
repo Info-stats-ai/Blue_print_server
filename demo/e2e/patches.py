@@ -143,6 +143,8 @@ async def main():
         await a.send(message)
         resend = await a.wait(lambda m: m.get("type") == "file_resend" and m.get("path") == message["path"])
         check(f"A patch {label} asks for a resend", resend is not None, a.inbox[-3:])
+        check(f"…saying whether the server has the file", resend is not None
+              and resend.get("known") is (message["path"] == path), resend)
         check(f"A patch {label} reaches no one", await b.wait(lambda m: m.get("type") in ("file_patched", "file_saved"), timeout=0.4) is None)
     await b.send({"type": "file_fetch", "path": path})
     check("The team's copy is untouched by bad patches", (await b.wait(of("file_saved", path)))["content"] == v2)
@@ -154,6 +156,35 @@ async def main():
     notice = await a.wait(lambda m: m.get("type") == "notice")
     check("A patch that adds a key isn't shared", notice is not None and "looks like it contains a key" in notice["message"], notice)
     check("…and never reaches Bob", await b.wait(lambda m: m.get("type") in ("file_patched", "file_saved"), timeout=0.5) is None)
+
+    # Saves are confirmed to the sender, and a whole-file save made from an
+    # outdated version is refused instead of overwriting a teammate's work.
+    a.inbox.clear(); b.inbox.clear()
+    v2b = v2.replace("    return 5\n", "    return 5  # bob\n")
+    await b.send(patch_message(path, v2, v2b))
+    accepted = await b.wait(lambda m: m.get("type") == "file_accepted" and m.get("path") == path)
+    check("The sender hears its save was accepted", accepted is not None and accepted["hash"] == digest(v2b), accepted)
+    await a.wait(of("file_patched", path))
+    await asyncio.sleep(0.2)
+    b.inbox.clear()  # Bob's own change comes back to him too
+    v2a = v2.replace("    return 7\n", "    return 7  # alice\n")
+    await a.send({"type": "file_save", "path": path, "content": v2a, "base_hash": digest(v2)})
+    stale = await a.wait(lambda m: m.get("type") == "file_resend" and m.get("path") == path)
+    check("A whole-file save from an old version is refused", stale is not None and stale.get("known") is True, stale)
+    check("…and a refused save reaches no one", await b.wait(lambda m: m.get("type") in ("file_patched", "file_saved"), timeout=0.4) is None)
+    await a.send({"type": "file_fetch", "path": path})
+    latest = await a.wait(of("file_saved", path))
+    check("Fetching without a sender names whoever saved last", latest is not None and latest["content"] == v2b
+          and latest["sender"] == bob["user_id"], latest and latest.get("sender"))
+    merged = v2b.replace("    return 7\n", "    return 7  # alice\n")
+    await a.send(patch_message(path, v2b, merged))
+    check("The merged version is accepted", (await a.wait(lambda m: m.get("type") == "file_accepted")) is not None)
+    check("…and reaches Bob", (await b.wait(of("file_patched", path))) is not None)
+    await a.send({"type": "file_save", "path": path, "content": v2, "base_hash": digest(merged)})
+    check("A save from the current version goes through", (await a.wait(lambda m: m.get("type") == "file_accepted")) is not None)
+    check("A save with no base still goes through, as from older apps",
+          (await a.send({"type": "file_save", "path": path, "content": v2}) or await a.wait(lambda m: m.get("type") == "file_accepted")) is not None)
+    await b.wait(of("file_saved", path)); await b.wait(of("file_saved", path))
 
     # After a full resend, patches flow again from the new version.
     await a.send({"type": "file_save", "path": path, "content": v3})

@@ -2237,6 +2237,11 @@ enum ClientMessage {
         content: String,
         #[serde(default)]
         origin: Option<String>,
+        // The version the sender's change starts from. When given and the
+        // team's copy has moved on, the save is refused (`file_resend`) so
+        // the sender merges first instead of overwriting a teammate's work.
+        #[serde(default)]
+        base_hash: Option<String>,
     },
     // A saved file sent as the lines that changed since `base_hash`, the
     // version the sender last knew the team had. The server applies it only
@@ -2603,14 +2608,23 @@ async fn handle_client_message(
             path,
             content,
             origin,
+            base_hash,
         } => {
             // Secret files, files holding keys, oversized files and paths
             // outside the project stop here; only the sender hears why.
             if let Some(reason) = crate::guard::file_refusal(&path, &content) {
                 return Some(crate::guard::notice(&reason));
             }
+            if let Some(base_hash) = base_hash
+                && let Some(known) = state.hub.get_file(session_id, &path).await
+                && known != content
+                && crate::patch::content_hash(&known) != base_hash
+            {
+                return Some(json!({"type": "file_resend", "path": path, "known": true}));
+            }
+            let accepted = json!({"type": "file_accepted", "path": path, "hash": crate::patch::content_hash(&content)});
             handle_file_save_message(state, session_id, user_id, path, content, origin, None).await;
-            None
+            Some(accepted)
         }
         ClientMessage::FilePatch {
             path,
@@ -2619,10 +2633,10 @@ async fn handle_client_message(
             patch,
             origin,
         } => {
-            let resend = json!({"type": "file_resend", "path": path});
             let Some(known) = state.hub.get_file(session_id, &path).await else {
-                return Some(resend);
+                return Some(json!({"type": "file_resend", "path": path, "known": false}));
             };
+            let resend = json!({"type": "file_resend", "path": path, "known": true});
             if crate::patch::content_hash(&known) != base_hash {
                 return Some(resend);
             }
@@ -2635,19 +2649,30 @@ async fn handle_client_message(
             if let Some(reason) = crate::guard::file_refusal(&path, &content) {
                 return Some(crate::guard::notice(&reason));
             }
+            let accepted = json!({"type": "file_accepted", "path": path, "hash": hash});
             handle_file_save_message(state, session_id, user_id, path, content, origin, Some((base_hash, hash, patch)))
                 .await;
-            None
+            Some(accepted)
         }
         ClientMessage::FileFetch { path, sender, origin } => {
             if !crate::guard::is_safe_relative_path(&path) || crate::guard::is_sensitive_path(&path) {
                 return None;
             }
             let content = state.hub.get_file(session_id, &path).await?;
+            // Without a named change, it's the newest version: say whose.
+            let (sender, origin) = match sender {
+                Some(sender) => (sender, origin),
+                None => crate::history::versions(&state.pool, session_id, Some(&path), 1)
+                    .await
+                    .ok()
+                    .and_then(|versions| versions.into_iter().next())
+                    .map(|newest| (newest.user_id, newest.origin))
+                    .unwrap_or_default(),
+            };
             Some(json!({
                 "type": "file_saved",
                 "path": path,
-                "sender": sender.unwrap_or_default(),
+                "sender": sender,
                 "origin": origin,
                 "content": content,
             }))
