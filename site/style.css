@@ -316,6 +316,9 @@ footer { border-top: 1px solid var(--line); padding-block: 24px 40px; font-size:
 .point span { color: var(--muted); font-size: .9375rem; line-height: 1.5; }
 .shot { margin: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #0b0d0f; }
 .shot img { display: block; width: 100%; height: auto; }
+.demo-video { margin: 0; }
+.demo-video video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; border: 1px solid var(--line); border-radius: 12px; background: #0b0d10; }
+.demo-video figcaption { margin-top: 10px; font-size: 13px; color: var(--muted, #8a929e); text-align: center; }
 #benchmarks .tile { margin-bottom: 16px; }
 @media (max-width: 1000px) { .points, .points.three, .points.four { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .points, .points.three, .points.four { grid-template-columns: minmax(0, 1fr); } }

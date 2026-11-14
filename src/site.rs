@@ -75,6 +75,10 @@ const DOC_IMAGES: &[(&str, &[u8])] = &[
     ("signed-out.jpg", include_bytes!("../site/docs-img/signed-out.jpg")),
 ];
 
+/// The demo video on the home page, and the still shown before it plays.
+const DEMO_VIDEO: &[u8] = include_bytes!("../site/media/demo.mp4");
+const DEMO_POSTER: &[u8] = include_bytes!("../site/media/demo-poster.jpg");
+
 const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; \
     style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; \
     script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; media-src 'self'; \
@@ -108,7 +112,15 @@ fn html(template: &str) -> Response {
 
 /// The website's page at `path`, for requests no route or shared app claimed.
 pub fn page(path: &str) -> Response {
+    page_with_range(path, None)
+}
+
+/// Like `page`, honouring a `Range` header. Browsers fetch video in pieces,
+/// and Safari won't play one that can't be fetched that way.
+pub fn page_with_range(path: &str, range: Option<&str>) -> Response {
     match path.trim_end_matches('/') {
+        "/media/demo.mp4" => media(DEMO_VIDEO, "video/mp4", range),
+        "/media/demo-poster.jpg" => media(DEMO_POSTER, "image/jpeg", None),
         "" => indexable(HOME, "/"),
         "/download" => indexable(DOWNLOAD, "/download"),
         "/logo.png" | "/favicon.ico" => (
@@ -264,6 +276,39 @@ fn doc_search_index() -> Response {
     Json(pages).into_response()
 }
 
+/// `bytes` whole, or the one part a `Range: bytes=start-end` header asks for.
+fn media(bytes: &'static [u8], content_type: &'static str, range: Option<&str>) -> Response {
+    let headers = [
+        (header::CONTENT_TYPE, content_type.to_string()),
+        (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
+        (header::ACCEPT_RANGES, "bytes".to_string()),
+    ];
+    let Some(spec) = range.and_then(|range| range.trim().strip_prefix("bytes=")) else {
+        return (headers, bytes).into_response();
+    };
+    let len = bytes.len();
+    let part = spec.split_once('-').and_then(|(start, end)| match (start.trim(), end.trim()) {
+        ("", "") => None,
+        ("", suffix) => suffix.parse::<usize>().ok().filter(|n| *n > 0).map(|n| (len.saturating_sub(n), len - 1)),
+        (start, "") => start.parse::<usize>().ok().map(|start| (start, len - 1)),
+        (start, end) => Some((start.parse::<usize>().ok()?, end.parse::<usize>().ok()?.min(len - 1))),
+    });
+    match part {
+        Some((start, end)) if start <= end && end < len => (
+            StatusCode::PARTIAL_CONTENT,
+            headers,
+            [(header::CONTENT_RANGE, format!("bytes {start}-{end}/{len}"))],
+            &bytes[start..=end],
+        )
+            .into_response(),
+        _ => (
+            StatusCode::RANGE_NOT_SATISFIABLE,
+            [(header::CONTENT_RANGE, format!("bytes */{len}"))],
+        )
+            .into_response(),
+    }
+}
+
 fn doc_image(name: &str) -> Response {
     match DOC_IMAGES.iter().find(|(image, _)| *image == name) {
         Some((_, bytes)) => (
@@ -346,6 +391,28 @@ mod tests {
         assert!(!looks_like_email("@b.co"));
         assert!(!looks_like_email("a b@c.co"));
         assert!(!looks_like_email("a@b@c.co"));
+    }
+
+    #[tokio::test]
+    async fn the_demo_video_is_served_whole_or_in_parts() {
+        let whole = page("/media/demo.mp4");
+        assert_eq!(whole.status(), StatusCode::OK);
+        assert_eq!(whole.headers()[header::ACCEPT_RANGES], "bytes");
+        let len = DEMO_VIDEO.len();
+
+        let first = page_with_range("/media/demo.mp4", Some("bytes=0-1"));
+        assert_eq!(first.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(first.headers()[header::CONTENT_RANGE], format!("bytes 0-1/{len}"));
+        let body = axum::body::to_bytes(first.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(&body[..], &DEMO_VIDEO[..2]);
+
+        let open = page_with_range("/media/demo.mp4", Some("bytes=100-"));
+        assert_eq!(open.headers()[header::CONTENT_RANGE], format!("bytes 100-{}/{len}", len - 1));
+        let tail = page_with_range("/media/demo.mp4", Some("bytes=-10"));
+        assert_eq!(tail.headers()[header::CONTENT_RANGE], format!("bytes {}-{}/{len}", len - 10, len - 1));
+        let past = page_with_range("/media/demo.mp4", Some(&format!("bytes={len}-")));
+        assert_eq!(past.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        assert_eq!(page("/media/demo-poster.jpg").status(), StatusCode::OK);
     }
 
     #[test]
