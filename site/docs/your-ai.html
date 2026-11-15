@@ -40,7 +40,7 @@
   <tr><td>Relevant team memory</td><td>A search of what the team has said and done, run for each request.</td></tr>
   <tr><td>Breaking changes from teammates</td><td>Teammates' changes to functions your code calls, and your own changes that break code calling them.</td></tr>
   <tr><td>Changes teammates' agents announced</td><td>Functions a teammate's agent is changing but hasn't synced yet, with the new version, so your AI writes against it.</td></tr>
-  <tr><td>Tests after teammates' changes</td><td>Which tests ran when a teammate's change arrived, and what failed.</td></tr>
+  <tr><td>Tests after changes</td><td>Which tests ran after a change (yours, your other AI's or a teammate's), and what failed.</td></tr>
 </tbody></table>
 <p><strong>Team code memory.</strong> I-IDE keeps an index of every function and type in the project: the team's synced code, yours, and the signatures of teammates' work that isn't sent yet. When you ask your AI for something, the closest existing code is added to your request, and your AI can search the index itself with its <strong>find_code</strong> tool. It reuses what exists instead of writing a second copy. The index is built on your machine and kept current as files are saved and arrive, so a search is instant and costs no AI tokens.</p>
 <p><strong>Team memory.</strong> Before your AI answers, I-IDE searches the session's pinned decisions, task board, team chat and the agent runs people chose to keep, and adds the closest matches to your request. This is retrieval-augmented generation (RAG), and there's nothing to set up. Keys and passwords are masked before anything is stored.</p>
