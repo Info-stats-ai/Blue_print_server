@@ -1,0 +1,1 @@
+{"name":"tflint","version":"0.1.1","description":"Support for TFLint","authors":["Michael Grubb <michael@grubb.co>"],"repository":"https://github.com/mgrubb/zed-tflint","schema_version":1,"wasm_api_version":"0.1.0","provides":["language-servers"]}

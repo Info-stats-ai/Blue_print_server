@@ -16,7 +16,7 @@
     <canvas id="hero-art" aria-hidden="true"></canvas>
     <div class="h-hero-copy">
       <h1>Build together.<br><span class="dim">Every agent in sync.</span></h1>
-      <p class="rotor" data-rotor data-lines="One live picture of the code, for your team and its agents.|Shared context: decisions and chat reach every agent.|Team memory, searched for every question. RAG, built in.|Agents see each other's work, live.|Team context is cached, so each AI step costs less.|Change a function, and every caller hears about it.|Changes merge themselves.|Merging and history are built in.|No git required. It still works if you want it.|You decide what's shared."><span class="sr-only">I is a code editor where your team and its agents share one live picture of the code. Decisions and chat reach every agent. Team memory is searched for every question. Agents see each other's work, live. Team context is cached, so each AI step costs less. Changing a function warns everyone whose code calls it. Changes merge themselves. Merging and history are built in.</span><span class="rotor-line" aria-hidden="true">One live picture of the code, for your team and its agents.</span></p>
+      <p class="rotor" data-rotor data-lines="One live picture of the code, for your team and its agents.|Shared context: decisions and chat reach every agent.|Team memory, searched for every question. RAG, built in.|Agents see each other's work, live.|Team context is cached, so each AI step costs less.|Change a function, and every caller hears about it.|Your agent fixes the callers before anyone hits the break.|Agents find the team's code instead of writing it twice.|Your AI uses the editor: references, renames, diagnostics.|Changes merge themselves.|Merging and history are built in.|No git required. It still works if you want it.|You decide what's shared."><span class="sr-only">I is a code editor where your team and its agents share one live picture of the code. Decisions and chat reach every agent. Team memory is searched for every question. Agents see each other's work, live. Team context is cached, so each AI step costs less. Changing a function warns everyone whose code calls it, and your agent fixes the callers before anyone hits the break. Agents find the team's code instead of writing it twice. Tests run the moment a change lands. Changes merge themselves. Merging and history are built in.</span><span class="rotor-line" aria-hidden="true">One live picture of the code, for your team and its agents.</span></p>
       <div class="h-actions">
         <a class="pill solid" href="/download">Join the waitlist <span aria-hidden="true">»</span></a>
         <a class="pill" href="#demo">Watch the demo</a>
@@ -49,6 +49,16 @@
       <div class="point"><small>Team memory · RAG</small><b>Searched before your AI answers</b><span>I searches what the team has said and done (chat, decisions, tasks, agent runs) and adds what's relevant to your question. Nothing to set up.</span></div>
       <div class="point"><small>Live agent context</small><b>Agents see each other's work</b><span>When a teammate's agent starts, yours is told what it's doing, which code it holds and what it wrote, as it happens. No stand-ins, no guessing.</span></div>
       <div class="point"><small>Breaking-change radar</small><b>Nobody breaks anybody's code</b><span>Change or remove a function and every teammate whose code calls it is told where, the moment the change reaches them. Their AI can update the calls in one click.</span></div>
+    </div>
+    <div class="h-head">
+      <h2>Breakages stopped where they start.<br><span class="dim">Not cleaned up after.</span></h2>
+      <p>Four checks that run on your machine as you work. No extra AI calls, no waiting.</p>
+    </div>
+    <div class="points four">
+      <div class="point"><small>Impact preview</small><b>See what your change breaks, before you send it</b><span>Change a function and I lists every call to it, including teammates' code. Your agent fixes those calls in the same run.</span></div>
+      <div class="point"><small>Changes on the way</small><b>Agents announce before they change</b><span>When an agent changes what a function takes, teammates hear it before the file syncs. One click asks it to hold.</span></div>
+      <div class="point"><small>Live affected tests</small><b>Tests run the moment a change lands</b><span>Only the tests that use what changed, on your machine, in seconds. Failures come with Ask AI to fix.</span></div>
+      <div class="point"><small>Team code memory</small><b>Agents reuse code instead of rewriting it</b><span>Every function in the project is indexed as files change. Your AI finds the team's helper before writing a second one.</span></div>
     </div>
     <div class="h-head">
       <h2>Merging and history are built in.<br><span class="dim">Git is optional.</span></h2>

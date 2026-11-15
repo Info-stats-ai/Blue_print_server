@@ -1,0 +1,1 @@
+{"name":"SQLMesh","version":"0.1.4","description":"SQLMesh and SQL model support. Enables types, go to definition and hover on models.","authors":["gittoby"],"repository":"https://github.com/gittoby/zed-sqlmesh","schema_version":1,"wasm_api_version":"0.7.0","provides":["language-servers"]}

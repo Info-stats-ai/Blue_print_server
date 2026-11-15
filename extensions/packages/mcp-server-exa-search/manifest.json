@@ -1,0 +1,1 @@
+{"name":"Exa MCP Server","version":"0.2.0","description":"Exa web search, page fetching, and Exa Agent for Zed's Agent Panel, via Exa's hosted MCP server","authors":["Felix Zeller <felix@exa.ai>"],"repository":"https://github.com/exa-labs/zed-exa-mcp-extension","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

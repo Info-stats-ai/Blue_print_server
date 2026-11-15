@@ -1,0 +1,1 @@
+{"name":"Java","version":"6.8.30","description":"Java support.","authors":["Java Extension Contributors"],"repository":"https://github.com/zed-extensions/java","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers","debug-adapters"]}

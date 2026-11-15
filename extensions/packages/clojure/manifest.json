@@ -1,0 +1,1 @@
+{"name":"Clojure","version":"0.2.2","description":"Clojure support.","authors":["Paulo Roberto de Oliveira Castro <p.oliveira.castro@gmail.com>"],"repository":"https://github.com/zed-extensions/clojure","schema_version":1,"wasm_api_version":"0.1.0","provides":["languages","grammars","language-servers"]}

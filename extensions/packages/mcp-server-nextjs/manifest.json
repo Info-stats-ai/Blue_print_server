@@ -1,0 +1,1 @@
+{"name":"NextJS DevTools MCP","version":"0.1.0","description":"Next.js development tools and utilities MCP server","authors":["uprizing <uprizingfaze@gmail.com>"],"repository":"https://github.com/MrUprizing/zed-mcp-server-nextjs","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

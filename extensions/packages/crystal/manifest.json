@@ -1,0 +1,1 @@
+{"name":"Crystal","version":"0.0.8","description":"Syntax highlighting and LSP support for Crystal & ECR","authors":["Margret Riegert <margret@eowyn.net>"],"repository":"https://github.com/crystal-lang-tools/zed-crystal","schema_version":1,"wasm_api_version":"0.1.0","provides":["languages","grammars","language-servers"]}

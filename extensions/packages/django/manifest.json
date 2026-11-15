@@ -1,0 +1,1 @@
+{"name":"Django","version":"0.3.0","description":"Django support","authors":["Josh Thomas <josh@joshthomas.dev>"],"repository":"https://github.com/joshuadavidthomas/zed-django","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

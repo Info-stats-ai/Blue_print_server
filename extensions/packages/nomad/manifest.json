@@ -1,0 +1,1 @@
+{"name":"Nomad","version":"0.0.3","description":"Nomad Language Server","authors":["loczek"],"repository":"https://github.com/loczek/zed-nomad-extension","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

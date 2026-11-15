@@ -1,0 +1,1 @@
+{"name":"PowerShell","version":"0.4.3","description":"PowerShell support","authors":["Thanabodee Charoenpiriyakij <wingyminus@gmail.com>"],"repository":"https://github.com/zed-extensions/powershell","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

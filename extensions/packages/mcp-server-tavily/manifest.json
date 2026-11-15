@@ -1,0 +1,1 @@
+{"name":"Tavily MCP Server","version":"0.0.2","description":"Model Context Protocol Server for Tavily","authors":["Chlorodose <chlorodose@chlorodose.me>"],"repository":"https://github.com/chlorodose/zed-mcp-server-tavily","schema_version":1,"wasm_api_version":"0.6.0","provides":["context-servers"]}

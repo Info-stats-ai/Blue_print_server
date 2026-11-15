@@ -1,0 +1,1 @@
+{"name":"gitlab-ci-ls","version":"1.0.1","description":"Language Server for gitlab-ci","authors":["Tom Zaspel <tom@zaspel.it>"],"repository":"https://github.com/tzabbi/zed-gitlab-ci-ls","schema_version":1,"wasm_api_version":"0.5.0","provides":["language-servers"]}

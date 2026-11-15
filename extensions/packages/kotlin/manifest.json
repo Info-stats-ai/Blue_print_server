@@ -1,0 +1,1 @@
+{"name":"Kotlin","version":"0.3.4","description":"Kotlin language support.","authors":["evrsen","cholwell"],"repository":"https://github.com/zed-extensions/kotlin","schema_version":1,"wasm_api_version":"0.5.0","provides":["languages","grammars","language-servers"]}

@@ -1,0 +1,1 @@
+{"name":"reST","version":"0.0.2","description":"reST syntax support.","authors":["elmarco","stsewd"],"repository":"https://github.com/elmarco/zed-rst","schema_version":1,"wasm_api_version":"0.0.6","provides":["languages","grammars","language-servers"]}

@@ -1,0 +1,1 @@
+{"name":"Grafana MCP Server","version":"0.1.2","description":"Model Context Protocol Server for Grafana","authors":["Ben Sully <ben.sully88@gmail.com>"],"repository":"https://github.com/sd2k/zed-mcp-grafana","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

@@ -1,0 +1,1 @@
+{"name":"Scala","version":"0.2.5","description":"Scala support.","authors":["Igal Tabachnik <hmemcpy@gmail.com>","Jamie Thompson <bishbashboshjt@gmail.com>","Michal Příhoda <michal@prihoda.net>"],"repository":"https://github.com/scalameta/metals-zed","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers","debug-adapters"]}

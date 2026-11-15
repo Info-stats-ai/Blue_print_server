@@ -1,0 +1,1 @@
+{"name":"LESS","version":"0.1.0","description":"LESS language support","authors":["jimliang <769925821@qq.com>"],"repository":"https://github.com/jimliang/zed-less","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

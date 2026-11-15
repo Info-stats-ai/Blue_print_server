@@ -1,0 +1,1 @@
+{"name":"GitHub Actions","version":"0.0.1","description":"GitHub Actions LSP support for Zed.","authors":["Samantha Nguyen <contact@samanthanguyen.me>"],"repository":"https://github.com/neoncitylights/zed-github-actions","schema_version":1,"wasm_api_version":"0.6.0","provides":["languages","grammars","language-servers"]}

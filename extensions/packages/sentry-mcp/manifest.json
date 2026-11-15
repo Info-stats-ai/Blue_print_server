@@ -1,0 +1,1 @@
+{"name":"Sentry MCP Server","version":"0.1.2","description":"Model Context Protocol Server for Sentry","authors":["fabric0de <junghyeonkim.dev@gmail.com>"],"repository":"https://github.com/fabric0de/sentry-mcp-server-zed","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

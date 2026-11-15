@@ -1,0 +1,1 @@
+{"name":"Elm","version":"0.2.2","description":"Elm support.","authors":["Zed Industries <support@zed.dev>","Andrey Kuzmin <hi@unsoundscapes.com>"],"repository":"https://github.com/zed-extensions/elm","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

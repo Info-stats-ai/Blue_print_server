@@ -1,0 +1,1 @@
+{"name":"Caddyfile","version":"0.0.7","description":"Caddyfile support with syntax highlighting and Tree-sitter grammar.","authors":["Bowen Sun <me@nusnewob.dev>"],"repository":"https://github.com/nusnewob/caddyfile-zed","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars"]}

@@ -1,0 +1,1 @@
+{"name":"CSV","version":"0.0.3","description":"CSV language support.","authors":["Jason Lee <huacnlee@gmail.com>"],"repository":"https://github.com/huacnlee/zed-csv","schema_version":1,"wasm_api_version":"0.0.4","provides":["languages","grammars"]}

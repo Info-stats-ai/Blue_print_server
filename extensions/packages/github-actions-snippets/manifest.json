@@ -1,0 +1,1 @@
+{"name":"GitHub Actions Snippet","version":"0.0.1","description":"GitHub Actions workflow snippets for Zed.","authors":["Daksh Sharma <www.dakshsharma.tech>"],"repository":"https://github.com/frypan05/github-actions-snippet","schema_version":1,"wasm_api_version":null,"provides":["snippets"]}

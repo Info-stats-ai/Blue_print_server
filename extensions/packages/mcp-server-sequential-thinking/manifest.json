@@ -1,0 +1,1 @@
+{"name":"Sequential Thinking MCP Server","version":"0.1.0","description":"Model Context Protocol Server for Sequential Thinking","authors":["Jeffrey Guenther <guenther.jeffrey@gmail.com>"],"repository":"https://github.com/LoamStudios/zed-mcp-server-sequential-thinking","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

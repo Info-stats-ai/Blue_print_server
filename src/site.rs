@@ -111,6 +111,7 @@ fn html(template: &str) -> Response {
 }
 
 /// The website's page at `path`, for requests no route or shared app claimed.
+#[cfg(test)]
 pub fn page(path: &str) -> Response {
     page_with_range(path, None)
 }

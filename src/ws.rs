@@ -2384,7 +2384,33 @@ enum ClientMessage {
         #[serde(default)]
         outline: Vec<String>,
     },
+    // This user's agent is about to change functions others may call: the
+    // old and new signatures, sent before the file itself is synced.
+    AgentIntent {
+        path: String,
+        #[serde(default)]
+        agent: String,
+        #[serde(default)]
+        changes: Vec<IntentChange>,
+    },
+    // "Hold on": asks `to`'s agent to stop changing `names` in `path`.
+    IntentHold {
+        to: String,
+        path: String,
+        #[serde(default)]
+        names: Vec<String>,
+    },
 }
+
+#[derive(Debug, Deserialize)]
+struct IntentChange {
+    name: String,
+    old: String,
+    #[serde(default)]
+    new: Option<String>,
+}
+
+const MAX_INTENT_CHANGES: usize = 12;
 
 const AGENT_RUN_STATUSES: &[&str] = &["running", "done", "failed", "stopped"];
 const AGENT_RUN_VERDICTS: &[&str] = &["accepted", "changes"];
@@ -2829,6 +2855,46 @@ async fn handle_client_message(
                     .broadcast(
                         session_id,
                         &json!({"type": "file_preview", "path": path, "user_id": user_id, "outline": outline}),
+                    )
+                    .await;
+            }
+            None
+        }
+        ClientMessage::AgentIntent { path, agent, changes } => {
+            if crate::guard::is_safe_relative_path(&path) && !crate::guard::is_sensitive_path(&path) {
+                let changes: Vec<serde_json::Value> = changes
+                    .iter()
+                    .take(MAX_INTENT_CHANGES)
+                    .filter(|change| !change.name.trim().is_empty())
+                    .map(|change| {
+                        json!({
+                            "name": trimmed(&change.name, 100),
+                            "old": crate::guard::redact_secrets(&trimmed(&change.old, 300)),
+                            "new": change.new.as_deref().map(|new| crate::guard::redact_secrets(&trimmed(new, 300))),
+                        })
+                    })
+                    .collect();
+                if !changes.is_empty() {
+                    let agent = trimmed(&agent, 60);
+                    state
+                        .hub
+                        .broadcast(
+                            session_id,
+                            &json!({"type": "agent_intent", "path": path, "user_id": user_id, "agent": agent, "changes": changes}),
+                        )
+                        .await;
+                }
+            }
+            None
+        }
+        ClientMessage::IntentHold { to, path, names } => {
+            if crate::guard::is_safe_relative_path(&path) && to != user_id && !to.trim().is_empty() {
+                let names: Vec<String> = names.iter().take(MAX_INTENT_CHANGES).map(|name| trimmed(name, 100)).collect();
+                state
+                    .hub
+                    .broadcast(
+                        session_id,
+                        &json!({"type": "intent_hold", "path": path, "user_id": user_id, "to": trimmed(&to, 100), "names": names}),
                     )
                     .await;
             }

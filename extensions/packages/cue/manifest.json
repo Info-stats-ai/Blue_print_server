@@ -1,0 +1,1 @@
+{"name":"CUE","version":"0.0.7","description":"CUE language support for Zed","authors":["Jesse Kasky <jkasky@gmail.com>"],"repository":"https://github.com/jkasky/zed-cue","schema_version":1,"wasm_api_version":"0.1.0","provides":["languages","grammars","language-servers"]}

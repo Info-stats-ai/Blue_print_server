@@ -1,0 +1,1 @@
+{"name":"Git Firefly","version":"0.1.9","description":"Provides Git Syntax Highlighting","authors":["d1y <chenhonzhou@gmail.com>","Peter Tripp <petertripp@gmail.com>"],"repository":"https://github.com/d1y/git_firefly","schema_version":1,"wasm_api_version":null,"provides":["languages","grammars"]}

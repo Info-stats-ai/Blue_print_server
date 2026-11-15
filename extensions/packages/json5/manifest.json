@@ -1,0 +1,1 @@
+{"name":"JSON5","version":"0.1.1","description":"JSON5 language support for Zed using Joakker's Tree-sitter grammar.","authors":["Chunzheng Wang <chunzheng.wang@icloud.com>"],"repository":"https://github.com/ChunzhengLab/json5-zed-extension","schema_version":1,"wasm_api_version":null,"provides":["languages","grammars"]}

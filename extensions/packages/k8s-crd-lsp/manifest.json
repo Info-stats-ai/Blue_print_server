@@ -1,0 +1,1 @@
+{"name":"Kubernetes CRD LSP","version":"0.0.1","description":"Kubernetes CRD schema completions and validation for YAML files","authors":["decade-eng"],"repository":"https://github.com/decade-eng/k8s-crd-lsp","schema_version":1,"wasm_api_version":"0.7.0","provides":["language-servers"]}

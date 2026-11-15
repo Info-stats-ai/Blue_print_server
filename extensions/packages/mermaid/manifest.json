@@ -1,0 +1,1 @@
+{"name":"Mermaid","version":"0.1.0","description":"Mermaid support.","authors":["Gabriel Silva <gabe@gabe.id>"],"repository":"https://github.com/gabeidx/zed-mermaid","schema_version":1,"wasm_api_version":null,"provides":["languages","grammars"]}

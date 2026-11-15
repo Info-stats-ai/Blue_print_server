@@ -1,0 +1,1 @@
+{"name":"KCL","version":"0.0.2","description":"Zed editor extension for KCL lang.","authors":["Nikola Jovanovic <nikola.jovanovic991@gmail.com>"],"repository":"https://github.com/pisarenko91/kcl-zed-extension","schema_version":1,"wasm_api_version":"0.4.0","provides":["languages","grammars","language-servers"]}

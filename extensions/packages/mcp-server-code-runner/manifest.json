@@ -1,0 +1,1 @@
+{"name":"Code Runner MCP Server","version":"0.1.0","description":"MCP Server for running code snippets in multiple programming languages","authors":["Jun Han <formulahendry@gmail.com>"],"repository":"https://github.com/formulahendry/zed-code-runner-mcp-server","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

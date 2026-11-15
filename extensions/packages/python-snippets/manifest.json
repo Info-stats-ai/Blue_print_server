@@ -1,0 +1,1 @@
+{"name":"Python Snippets","version":"0.1.3","description":"Python snippets for Zed IDE. A collection of python snippets to improve your development speed.","authors":["Carlos Tosta <jctosta86@gmail.com>"],"repository":"https://github.com/jctosta/python-zed-snippets","schema_version":1,"wasm_api_version":null,"provides":["snippets"]}

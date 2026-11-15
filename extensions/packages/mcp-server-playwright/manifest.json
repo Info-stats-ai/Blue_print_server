@@ -1,0 +1,1 @@
+{"name":"Playwright MCP Server","version":"0.0.1","description":"Model Context Protocol Server for Playwright","authors":["Karlo Medallo <karlo.medallo@outlook.com>"],"repository":"https://github.com/karlomedallo/zed-playwright-mcp","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

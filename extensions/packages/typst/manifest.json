@@ -1,0 +1,1 @@
+{"name":"Typst","version":"0.2.2","description":"Typst support.","authors":["WeetHet <stas.ale66@gmail.com>"],"repository":"https://github.com/weethet/typst.zed","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

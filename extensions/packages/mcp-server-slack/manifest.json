@@ -1,0 +1,1 @@
+{"name":"Slack MCP Server","version":"0.0.2","description":"Slack's Model Context Server","authors":["Semih Berkay Öztürk <semihozt@gmail.com"],"repository":"https://github.com/semioz/zed-slack-mcp","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

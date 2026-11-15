@@ -1,0 +1,1 @@
+{"name":"Taskfile","version":"0.1.0","description":"Taskfile syntax highlighting and task runner support","authors":["Nick Glu <nick@nickalie.com>"],"repository":"https://github.com/nickalie/zed-taskfile","schema_version":1,"wasm_api_version":null,"provides":["languages","grammars"]}

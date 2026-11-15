@@ -1,0 +1,1 @@
+{"name":"Prisma Context Server","version":"0.2.0","description":"Model Context Server for Prisma","authors":["Alexey Orlenko <alex@aqrln.net>"],"repository":"https://github.com/aqrln/prisma-mcp-zed","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

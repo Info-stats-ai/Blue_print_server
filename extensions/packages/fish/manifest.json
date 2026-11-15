@@ -1,0 +1,1 @@
+{"name":"Fish","version":"0.1.0","description":"Fish language support for Zed","authors":["Hasit Mistry <hasitnm@gmail.com>"],"repository":"https://github.com/hasit/zed-fish","schema_version":1,"wasm_api_version":null,"provides":["languages","grammars"]}

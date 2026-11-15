@@ -1,0 +1,1 @@
+{"name":"Kubernetes Snippets","version":"0.0.1","description":"Kubernetes YAML snippets with zero-config schema validation.","authors":["Rajeev Rajeshuni <rajeev@rajeshuni.com>"],"repository":"https://github.com/zed-kubernetes/zed-kubernetes","schema_version":1,"wasm_api_version":null,"provides":["snippets"]}

@@ -1,0 +1,1 @@
+{"name":"Angular","version":"0.0.7","description":"Angular Language support","authors":["nathansbradshaw"],"repository":"https://github.com/nathansbradshaw/zed-angular","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

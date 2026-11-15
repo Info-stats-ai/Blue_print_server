@@ -1,0 +1,1 @@
+{"name":"NeoCMake","version":"1.0.0","description":"CMake grammar and lsp with neocmakelsp","authors":["Sorochan Ilya <sorochanilyav@gmail.com>"],"repository":"https://github.com/k0tran/zed_neocmake","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

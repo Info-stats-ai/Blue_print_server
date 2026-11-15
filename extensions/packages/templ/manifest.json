@@ -1,0 +1,1 @@
+{"name":"Templ","version":"0.0.11","description":"Templ language support for Zed","authors":["Mehmet Akif Duba <mail@makifdb.com>"],"repository":"https://github.com/makifdb/zed-templ","schema_version":1,"wasm_api_version":"0.0.6","provides":["languages","grammars","language-servers"]}

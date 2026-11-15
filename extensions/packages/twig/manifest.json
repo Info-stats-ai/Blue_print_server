@@ -1,0 +1,1 @@
+{"name":"Twig","version":"0.3.0","description":"Syntax highlighting and Intellisense for Twig in Zed","authors":["Yussuf Sassi <yussuf@tuta.io>"],"repository":"https://github.com/YussufSassi/zed-twig","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

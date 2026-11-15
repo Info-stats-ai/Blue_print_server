@@ -57,10 +57,8 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 curl -s -o /dev/null "$BASE/sessions" || { echo "Server didn't start; see $STATE/server.log"; exit 1; }
-if [ -d "$HOME/.cache/i-ide-extensions/out" ]; then
-  python3 -I "$SERVER_DIR/extensions/publish.py" upload "$BASE" >"$STATE/extensions.log" 2>&1 || true
-  echo "Extension store: $(grep -c '^published' "$STATE/extensions.log" || true) extensions loaded"
-fi
+# The store loads the packages bundled in extensions/packages at startup.
+echo "Extension store: $(grep -o 'loaded [0-9]* bundled' "$STATE/server.log" || echo 'not loaded')"
 unset EXTENSIONS_PUBLISH_TOKEN
 
 json() { python3 -I -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
@@ -144,6 +142,7 @@ JSON
     --env BLUEPRINT_HTTP_URL="$BASE" --env BLUEPRINT_SERVER_URL="ws://127.0.0.1:$PORT/ws" \
     --env BLUEPRINT_DEV_TOKEN="$token" --env BLUEPRINT_DEV_USER_ID="$user_id" \
     --env I_IDE_API_URL="$BASE/api" \
+    --env ZED_STATELESS=1 \
     --stdout "$home/ide.log" --stderr "$home/ide.log" \
     --args --user-data-dir "$home/data" "$project_dir" "i-ide://i-mode/join/$SESSION.$INVITE"
   # `open` returns before the app's pid is known; find it by its data dir.

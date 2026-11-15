@@ -1,0 +1,1 @@
+{"name":"Digital Ocean MCP Server","version":"0.1.0","description":"Model Context Protocol server for DigitalOcean","authors":["Ali Dowair"],"repository":"https://github.com/adowair/zed-mcp-server-digitalocean","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

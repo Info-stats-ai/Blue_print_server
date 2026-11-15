@@ -1,0 +1,1 @@
+{"name":"Biome","version":"0.3.2","description":"Biome support for Zed","authors":["biomejs <biomejs.dev>"],"repository":"https://github.com/biomejs/biome-zed","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

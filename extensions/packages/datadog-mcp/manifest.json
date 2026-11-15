@@ -1,0 +1,1 @@
+{"name":"Datadog MCP Server","version":"0.3.0","description":"Datadog MCP Server for Zed","authors":["Roberto Huertas <roberto.huertas@outlook.com>"],"repository":"https://github.com/robertohuertasm/zed-datadog-mcp","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

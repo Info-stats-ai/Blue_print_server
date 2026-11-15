@@ -1,0 +1,1 @@
+{"name":"Stylelint","version":"3.2.0","description":"Stylelint support via the official vscode-stylelint language server","authors":["Florian Sanders <sanders.florian+zed@gmail.com>"],"repository":"https://github.com/florian-sanders/zed-stylelint","schema_version":1,"wasm_api_version":"0.7.0","provides":["language-servers"]}

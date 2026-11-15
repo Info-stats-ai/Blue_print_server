@@ -1,0 +1,1 @@
+{"name":"Buildkite MCP","version":"0.0.4","description":"Model Context Protocol Server for Buildkite","authors":["Ben McNicholl <git@benmcnicholl.com>"],"repository":"https://github.com/mcncl/zed-mcp-server-buildkite","schema_version":1,"wasm_api_version":"0.6.0","provides":["context-servers"]}

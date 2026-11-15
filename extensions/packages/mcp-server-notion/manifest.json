@@ -1,0 +1,1 @@
+{"name":"Notion MCP Server","version":"0.1.0","description":"Model Context Protocol Server for Notion","authors":["f1729"],"repository":"https://github.com/f1729/zed-notion-mcp","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

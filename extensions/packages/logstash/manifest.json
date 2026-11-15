@@ -1,0 +1,1 @@
+{"name":"Logstash","version":"0.0.3","description":"Logstash pipeline config file syntax highlighting support","authors":["Agani Daniel Strong <adhueywilan@gmail.com>"],"repository":"https://github.com/StrongTheDev/logstash-for-zed","schema_version":1,"wasm_api_version":null,"provides":["languages","grammars"]}

@@ -1,0 +1,1 @@
+{"name":"wakatime","version":"0.1.10","description":"Wakatime support.","authors":["Alan Hamlett <alan@wakatime.com>","bestgopher <84328409@qq.com>"],"repository":"https://github.com/wakatime/zed-wakatime","schema_version":1,"wasm_api_version":"0.7.0","provides":["language-servers"]}

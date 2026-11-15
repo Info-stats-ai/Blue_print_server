@@ -1,0 +1,1 @@
+{"name":"Comments Highlighter","version":"0.6.8","description":"Comment language extension for highlighting special comments","authors":["Donnie Adams <donnie@thedadams.com>"],"repository":"https://github.com/thedadams/zed-comment","schema_version":1,"wasm_api_version":null,"provides":["languages","grammars"]}

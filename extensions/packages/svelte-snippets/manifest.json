@@ -1,0 +1,1 @@
+{"name":"Svelte Snippets","version":"0.2.0","description":"Svelte snippets for the Zed IDE. A collection of Svelte snippets to improve your development speed.","authors":["Bobby Mannino <manninobobby@icloud.com>"],"repository":"https://github.com/bobbymannino/svelte-snippets-for-zed","schema_version":1,"wasm_api_version":null,"provides":["snippets"]}

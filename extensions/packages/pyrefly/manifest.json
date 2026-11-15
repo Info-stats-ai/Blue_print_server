@@ -1,0 +1,1 @@
+{"name":"Pyrefly","version":"0.0.1","description":"Support for the Pyrefly static type checker for Python in Zed","authors":["Ben Kunkle <ben@zed.dev>"],"repository":"https://github.com/zed-extensions/pyrefly","schema_version":1,"wasm_api_version":"0.5.0","provides":["language-servers"]}

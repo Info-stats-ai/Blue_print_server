@@ -1,0 +1,1 @@
+{"name":"Helm","version":"0.0.9","description":"Syntax highlighting for Helm templates","authors":["cabrinha <yuppie@hey.com>","MrJosh <hi@mrjosh.me>","Hemant Joshi <mail@hjoshi.me>"],"repository":"https://github.com/cabrinha/helm.zed","schema_version":1,"wasm_api_version":"0.5.0","provides":["languages","grammars","language-servers"]}

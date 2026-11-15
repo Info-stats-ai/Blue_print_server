@@ -1,0 +1,1 @@
+{"name":"Cap'n Proto","version":"0.0.1","description":"Cap'n Proto syntax for Zed","authors":["Cole Mackenzie <cole@mirio.dev>"],"repository":"https://github.com/cmackenzie1/zed-capnp","schema_version":1,"wasm_api_version":"0.0.6","provides":["languages","grammars"]}

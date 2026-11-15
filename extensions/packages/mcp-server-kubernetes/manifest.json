@@ -1,0 +1,1 @@
+{"name":"Kubernetes MCP Server","version":"0.1.0","description":"Model Context Protocol Server for Kubernetes","authors":["Ferra Technology GmbH <hello@ferra.io>"],"repository":"https://github.com/ferra-io/zed-mcp-server-kubernetes","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

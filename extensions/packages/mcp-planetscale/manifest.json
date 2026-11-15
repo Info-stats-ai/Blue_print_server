@@ -1,0 +1,1 @@
+{"name":"PlanetScale MCP","version":"0.0.1","description":"Model Context Server for interacting with databases on PlanetScale.","authors":["Hunter Boyd <hunterjsb@gmail.com>"],"repository":"https://github.com/hunterjsb/zed-planetscale-mcp","schema_version":1,"wasm_api_version":"0.5.0","provides":["context-servers"]}

@@ -1,0 +1,1 @@
+{"name":"Nim","version":"0.2.0","description":"Nim support","authors":["Foxoman <sultan@foxoman.net>"],"repository":"https://github.com/foxoman/zed-nim","schema_version":1,"wasm_api_version":"0.1.0","provides":["languages","grammars","language-servers"]}

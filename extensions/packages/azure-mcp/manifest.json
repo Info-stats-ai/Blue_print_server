@@ -1,0 +1,1 @@
+{"name":"Azure MCP","version":"0.1.1","description":"Azure MCP server for Zed's agent — manage and query Azure resources from the assistant.","authors":["Hodahel Moinzadeh <hody@hody.dev>"],"repository":"https://github.com/hodyhq/zed-azure-mcp","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

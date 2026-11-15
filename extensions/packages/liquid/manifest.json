@@ -1,0 +1,1 @@
+{"name":"Liquid","version":"0.7.0","description":"Shopify Liquid support","authors":["Jeffrey Guenther <guenther.jeffrey@gmail.com>"],"repository":"https://github.com/TheBeyondGroup/zed-shopify-liquid","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

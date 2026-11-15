@@ -1,0 +1,1 @@
+{"name":"Gitignore Templates","version":"2026.9.1","description":"Provides snippets of .gitignore templates from https://github.com/github/gitignore.","authors":["Mahmud Ridwan <m@hjr265.me>"],"repository":"https://github.com/hjr265/zed-gitignore-templates","schema_version":1,"wasm_api_version":null,"provides":["snippets"]}

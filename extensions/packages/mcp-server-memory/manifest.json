@@ -1,0 +1,1 @@
+{"name":"Memory MCP Server","version":"0.1.0","description":"Model Context Protocol Server for Memory","authors":["Robin Oble <robin@oble.dev>"],"repository":"https://github.com/robin-afro/zed-mcp-memory","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

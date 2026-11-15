@@ -1,0 +1,1 @@
+{"name":"Package.json Upgrade","version":"0.1.7","description":"Show available npm updates inline in package.json with quick-fix code actions to upgrade.","authors":["Arthur Monteiro <arthurmtro@gmail.com>"],"repository":"https://github.com/Arthurmtro/zed-package-json-upgrade","schema_version":1,"wasm_api_version":"0.7.0","provides":["language-servers"]}

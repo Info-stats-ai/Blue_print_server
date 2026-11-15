@@ -1,0 +1,1 @@
+{"name":"PHP","version":"0.5.4","description":"PHP support.","authors":["Piotr Osiewicz <piotr@zed.dev>"],"repository":"https://github.com/zed-extensions/php","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers","debug-adapters"]}

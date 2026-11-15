@@ -1,0 +1,1 @@
+{"name":"Chrome DevTools MCP","version":"1.0.2","description":"Model Context Server for Chrome DevTools MCP","authors":["Aleksandr Kosachev <gohryt@rays-of-good.online>"],"repository":"https://github.com/gohryt/chrome-devtools-mcp-zed","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

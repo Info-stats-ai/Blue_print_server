@@ -1,0 +1,1 @@
+{"name":"Elixir Snippets","version":"0.1.0","description":"Write Elixir faster with code snippets.","authors":["FeedMyCat54 <kangelou@proton.me>"],"repository":"https://github.com/FeedMyCat54/elixir-zed-snippets.git","schema_version":1,"wasm_api_version":null,"provides":["snippets"]}

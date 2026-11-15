@@ -1,0 +1,1 @@
+{"name":"PHP Snippets","version":"0.1.0","description":"Essential PHP snippets for faster development","authors":["seekode <nicolas@seekode.dev>"],"repository":"https://github.com/seekode/zed-php-snippets","schema_version":1,"wasm_api_version":null,"provides":["snippets"]}

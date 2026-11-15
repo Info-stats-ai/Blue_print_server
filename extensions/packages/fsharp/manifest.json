@@ -1,0 +1,1 @@
+{"name":"F#","version":"0.0.12","description":"F# language support for Zed","authors":["Nathan Collins <me@nathancollins.dev>"],"repository":"https://github.com/nathanjcollins/zed-fsharp","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

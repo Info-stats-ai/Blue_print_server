@@ -1,0 +1,1 @@
+{"name":"Emmet","version":"0.0.15","description":"Emmet support","authors":["Piotr Osiewicz <piotr@zed.dev>"],"repository":"https://github.com/zed-extensions/emmet","schema_version":1,"wasm_api_version":"0.7.0","provides":["language-servers"]}

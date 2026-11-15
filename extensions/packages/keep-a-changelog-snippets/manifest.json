@@ -1,0 +1,1 @@
+{"name":"Keep a Changelog Snippets","version":"0.1.0","description":"Markdown snippets for writing changelogs that follow Keep a Changelog.","authors":["ssh-den <sshden@duck.com>"],"repository":"https://github.com/ssh-den/zed-keep-a-changelog-snippets","schema_version":1,"wasm_api_version":null,"provides":["snippets"]}

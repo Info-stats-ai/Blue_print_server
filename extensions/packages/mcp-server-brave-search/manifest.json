@@ -1,0 +1,1 @@
+{"name":"Brave Search MCP Server","version":"0.2.0","description":"Model Context Protocol Server for Brave Search","authors":["Zed Industries <support@zed.dev>"],"repository":"https://github.com/zed-extensions/mcp-server-brave-search","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

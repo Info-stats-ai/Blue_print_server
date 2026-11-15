@@ -1,0 +1,1 @@
+{"name":"GitLab MCP Server","version":"0.0.5","description":"Model Context Protocol Server for GitLab","authors":["Akbxr <hi@akbxr.com>"],"repository":"https://github.com/akbxr/gitlab-mcp-zed","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

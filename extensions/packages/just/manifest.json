@@ -1,0 +1,1 @@
+{"name":"Justfile","version":"0.2.0","description":"Justfile language support","authors":["Jack Taylor <j@jackt.io>","Matt Robenolt <m@robenolt.com>"],"repository":"https://github.com/jackTabsCode/zed-just","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers"]}

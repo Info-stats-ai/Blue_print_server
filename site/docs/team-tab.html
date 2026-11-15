@@ -31,6 +31,13 @@
 <h2>Breaking changes</h2>
 <p>When a teammate's change renames a function, changes what it takes, or removes it, I-IDE checks your own code, including work you haven't sent, for calls to it. If it finds any, a <strong>Breaking changes</strong> card shows who changed what, the old and new version, and the lines that call it.</p>
 <p>Select <strong>Ask AI to fix</strong> and your AI updates those calls for you, leaving your teammate's file alone. Your AIs are also told about open breaking changes, so new code uses the new version. Changes inside a function, or to its formatting, don't count.</p>
+<h2>Your change breaks callers</h2>
+<p>The same check runs the other way. When you, or your AI, change or remove a function that code elsewhere calls, including teammates' synced code, a <strong>Your change breaks callers</strong> card lists the places, and who wrote them. It shows before you sync on Manual, and as you save on Auto. Select <strong>Fix the calls too</strong> and your AI updates them in the same piece of work, so teammates never hit the break. Your AI is told as well, so an agent that changes a function fixes its callers without being asked. The card clears as the calls are fixed.</p>
+<h2>Changes on the way</h2>
+<p>When a teammate's AI changes what a function takes, everyone in the session hears about it straight away, before the file is synced. <strong>Changes on the way</strong> shows the old and new version and, if your code calls it, where. Your AI is told too, so new code is written against the new version.</p>
+<p>Select <strong>Hold on</strong> to ask their AI to stop. Their AI is told, and the file stays unsent until its owner syncs it. Select <strong>X</strong> if the change is fine by you.</p>
+<h2>Tests after teammates' changes</h2>
+<p>When a teammate's change lands in your copy, I-IDE runs the tests that use what it touched, on your machine, and shows the result in Team activity: passed, or failed with the lines that explain why and <strong>Ask AI to fix</strong>. Only those test files run, so it takes seconds. It works with Python (pytest or unittest), Go, and JavaScript or TypeScript with Vitest or Jest. Switch it off under <strong>AI &amp; sharing…</strong> → <strong>When teammates' changes arrive</strong>.</p>
 <h2>Versions, without git</h2>
 <p>Every version of a file that reaches the team is kept, with who made it and when. Select the clock on a file to list them. <strong>View</strong> opens the file with what changed since that version marked. <strong>Restore</strong> puts that version back; it then counts as your newest change.</p>
 <p>Git keeps working as usual if your project uses it. See <a href="/docs/git">Git</a>.</p>

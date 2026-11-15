@@ -1,0 +1,1 @@
+{"name":"Graphviz","version":"0.2.1","description":"Graphviz support.","authors":["Gabriel Silva <gabe@gabe.id>"],"repository":"https://github.com/gabeidx/zed-graphviz","schema_version":1,"wasm_api_version":"0.2.0","provides":["languages","grammars","language-servers"]}

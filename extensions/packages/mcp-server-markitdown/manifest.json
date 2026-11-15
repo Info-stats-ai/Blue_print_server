@@ -1,0 +1,1 @@
+{"name":"MarkItDown MCP Server","version":"0.0.1","description":"MarkItDown MCP Server for Zed","authors":["G36maid <G36maid@proton.me>"],"repository":"https://github.com/G36maid/zed-mcp-server-markitdown","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

@@ -88,10 +88,21 @@ def build(names):
         out = OUT / name
         subprocess.run(["rm", "-rf", str(out)])
         out.mkdir(parents=True)
-        result = subprocess.run(
-            [str(BUILDER), "--source-dir", str(source), "--output-dir", str(out), "--scratch-dir", str(CACHE / "scratch")],
-            capture_output=True, text=True,
-        )
+        # Newer extensions ship optional query files I's builder doesn't use
+        # (tags.scm, say): drop the one it names from this cached copy and try
+        # again. They only add extras, so the language works without them.
+        for _ in range(6):
+            result = subprocess.run(
+                [str(BUILDER), "--source-dir", str(source), "--output-dir", str(out), "--scratch-dir", str(CACHE / "scratch")],
+                capture_output=True, text=True,
+            )
+            unsupported = re.search(r"query (\S+\.scm) is not supported", result.stderr)
+            if result.returncode == 0 or not unsupported:
+                break
+            for query in (source / "languages").glob(f"*/{unsupported.group(1)}"):
+                query.unlink()
+        # The extension's own compile output is ~200 MB and never needed again.
+        subprocess.run(["rm", "-rf", str(source / "target")])
         if result.returncode != 0 or not (out / "archive.tar.gz").exists():
             skipped.append((name, "build failed: " + (result.stderr.strip().splitlines() or ["?"])[-1][:200]))
             continue

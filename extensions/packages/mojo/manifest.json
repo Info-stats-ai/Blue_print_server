@@ -1,0 +1,1 @@
+{"name":"Mojo","version":"0.0.1","description":"Mojo language support for Zed","authors":["Vadim Suharnikov"],"repository":"https://github.com/vadim-su/zed_mojo","schema_version":1,"wasm_api_version":"0.7.0","provides":["languages","grammars","language-servers","snippets"]}

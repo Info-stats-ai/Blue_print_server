@@ -1,0 +1,1 @@
+{"name":"Ruby Snippets","version":"0.1.0","description":"Ruby code snippets for common classes, modules, blocks, and testing workflows.","authors":["Andy Waite <github.aw@andywaite.com>","Vitaly Slobodin <vitaly_slobodin@fastmail.com>"],"repository":"https://github.com/vitallium/zed-ruby-snippets-extension","schema_version":1,"wasm_api_version":null,"provides":["snippets"]}

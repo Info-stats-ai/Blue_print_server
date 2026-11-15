@@ -1,0 +1,1 @@
+{"name":"Assembly Language Server","version":"0.1.0","description":"Assembly syntax highlighting and language server","authors":["Jacob Parker <blocckba5her@gmail.com>"],"repository":"https://github.com/DevBlocky/zed-asm","schema_version":1,"wasm_api_version":"0.6.0","provides":["languages","grammars","language-servers"]}

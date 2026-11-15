@@ -1,0 +1,1 @@
+{"name":"PlantUML","version":"0.1.0","description":"PlantUML support.","authors":["Gabriel Silva <gabe@gabe.id>"],"repository":"https://github.com/gabeidx/zed-plantuml","schema_version":1,"wasm_api_version":null,"provides":["languages","grammars"]}

@@ -1,0 +1,1 @@
+{"name":"Terraform Context Server","version":"1.0.0","description":"Model Context Server for HashiCorp Terraform","authors":["Jerome Brown <Jerome@SoliDeoGloria.tech>"],"repository":"https://github.com/oWretch/zed-extension-terraform-mcp","schema_version":1,"wasm_api_version":"0.5.0","provides":["context-servers"]}

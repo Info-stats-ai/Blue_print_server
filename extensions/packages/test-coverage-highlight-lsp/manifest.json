@@ -1,0 +1,1 @@
+{"name":"Test Coverage Highlight","version":"0.1.0","description":"Highlight test coverage (lcov, jacoco, cobertura, clover) as colored lines.","authors":["Hyyan Abo Fakher <hyyanaf@gmail.com>"],"repository":"https://github.com/hyyan/zed-test-coverage-highlight","schema_version":1,"wasm_api_version":"0.7.0","provides":["language-servers"]}

@@ -1,0 +1,1 @@
+{"name":"Go Snippets","version":"0.1.5","description":"Go snippets for Zed IDE. A collection of go snippets to improve your development speed.","authors":["Ayberk Gezer <ayberkgezer@outlook.com>"],"repository":"https://github.com/ayberkgezer/go-zed-snippets","schema_version":1,"wasm_api_version":null,"provides":["snippets"]}

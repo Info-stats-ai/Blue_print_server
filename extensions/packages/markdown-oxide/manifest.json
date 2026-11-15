@@ -1,0 +1,1 @@
+{"name":"Markdown Oxide","version":"0.0.5","description":"Obsidian-Inspired PKM Language Server for Zed","authors":["Felix Zeller <felixazeller@gmail.com>"],"repository":"https://github.com/Feel-ix-343/markdown-oxide","schema_version":1,"wasm_api_version":"0.0.4","provides":["language-servers"]}

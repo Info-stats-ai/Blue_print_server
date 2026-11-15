@@ -1,0 +1,1 @@
+{"name":"MySQL MCP Server","version":"0.0.1","description":"Model Context Protocol Server for MySQL databases","authors":["Toon Van Dooren"],"repository":"https://github.com/toonvd/zed-mysql-mcp","schema_version":1,"wasm_api_version":"0.7.0","provides":["context-servers"]}

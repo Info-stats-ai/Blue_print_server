@@ -1,0 +1,1 @@
+{"name":"Nginx","version":"0.0.3","description":"Nginx support","authors":["d1y <chenhonzhou@gmail.com>"],"repository":"https://github.com/d1y/nginx-zed","schema_version":1,"wasm_api_version":"0.0.6","provides":["languages","grammars","language-servers"]}

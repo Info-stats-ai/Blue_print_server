@@ -1,0 +1,1 @@
+{"name":"env","version":"0.0.2","description":"🔐 Environment support. ✰ and report issues ➩","authors":["Daniel Zarifpour <z@rifpour.xyz>"],"repository":"https://github.com/zarifpour/zed-env","schema_version":1,"wasm_api_version":null,"provides":["languages","grammars"]}

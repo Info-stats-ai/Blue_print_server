@@ -1,0 +1,1 @@
+{"name":"dbt","version":"0.1.2","description":"dbt language support for Zed, powered by dbt-language-server.","authors":["kylejbrk"],"repository":"https://github.com/kylejbrk/zed-dbt","schema_version":1,"wasm_api_version":"0.7.0","provides":["language-servers"]}
