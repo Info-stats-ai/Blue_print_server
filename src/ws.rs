@@ -52,6 +52,38 @@ struct Subscriber {
     // The client applies file patches, so it gets a teammate's change as
     // the lines that changed rather than the whole file.
     patches: bool,
+    // The git branch this connection's project is on ("" for none).
+    branch: String,
+    // Whether this person shares changes with teammates on other branches
+    // (as context, never as files). Their choice; on unless they turn it off.
+    share_across: bool,
+}
+
+/// Which copy of the project's files a connection syncs with. Everyone on
+/// the session's main branch (and anyone without git) shares the main lane,
+/// which every existing feature works on. A teammate on another branch has
+/// a lane of their own: their files sync only with others on that branch,
+/// and everyone else gets their changes as context, never into their files.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Lane {
+    Main,
+    Branch(String),
+}
+
+impl Lane {
+    /// The branch name history is kept under: "" for the main lane.
+    pub fn history_key(&self) -> &str {
+        match self {
+            Lane::Main => "",
+            Lane::Branch(branch) => branch,
+        }
+    }
+}
+
+/// A branch name as a client reports it, made safe to store and show: at
+/// most 200 characters, no control characters. "" means no branch.
+pub fn clean_branch(branch: &str) -> String {
+    branch.trim().chars().filter(|c| !c.is_control()).take(200).collect()
 }
 
 /// What a newly connected socket reads its outgoing messages from.
@@ -91,6 +123,12 @@ struct SessionChannel {
     // stay the plain-text projection of this for everything that only needs
     // to read text (agent context, blueprint generation, the watcher).
     buffers: HashMap<String, text::Buffer>,
+    // The branch the main lane is on: the first branch anyone in the
+    // session reported. `None` until then.
+    main_branch: Option<String>,
+    // Other branches' files, by branch then path. Kept apart from `files`,
+    // so nothing that reads the main lane ever sees another branch's code.
+    branch_files: HashMap<String, HashMap<String, String>>,
     // Stable per-session replica id per user, so a reconnecting client keeps
     // the same identity in the CRDT history instead of fragmenting across
     // multiple replica ids for the same person.
@@ -628,6 +666,8 @@ impl Hub {
                 file_order: Vec::new(),
                 symbols: HashMap::new(),
                 buffers: HashMap::new(),
+                main_branch: None,
+                branch_files: HashMap::new(),
                 next_replica_id: clock::ReplicaId::FIRST_COLLAB_ID.as_u16(),
                 presence: HashMap::new(),
                 total_messages: 0,
@@ -655,6 +695,8 @@ impl Hub {
         let pending = Arc::new(AtomicUsize::new(0));
         if let Ok(mut subscribers) = channel.subscribers.lock() {
             subscribers.push(Subscriber {
+                branch: String::new(),
+                share_across: true,
                 id,
                 user_id: user_id.to_string(),
                 tx,
@@ -674,6 +716,150 @@ impl Hub {
         {
             subscriber.patches = patches;
         }
+    }
+
+    /// Records the git branch one connection is on and returns its lane and
+    /// the session's main branch. The first branch reported becomes the main
+    /// lane's.
+    pub async fn set_branch(
+        &self,
+        session_id: &str,
+        connection_id: u64,
+        branch: &str,
+        share_across: Option<bool>,
+    ) -> (Lane, Option<String>) {
+        let branch = clean_branch(branch);
+        let mut map = self.inner.write().await;
+        let Some(channel) = map.get_mut(session_id) else {
+            return (Lane::Main, None);
+        };
+        if channel.main_branch.is_none() && !branch.is_empty() {
+            channel.main_branch = Some(branch.clone());
+        }
+        if let Ok(mut subscribers) = channel.subscribers.lock()
+            && let Some(subscriber) = subscribers.iter_mut().find(|subscriber| subscriber.id == connection_id)
+        {
+            subscriber.branch = branch.clone();
+            if let Some(share_across) = share_across {
+                subscriber.share_across = share_across;
+            }
+        }
+        (lane_for(channel.main_branch.as_deref(), &branch), channel.main_branch.clone())
+    }
+
+    /// The lane one connection syncs files in.
+    pub async fn lane(&self, session_id: &str, connection_id: u64) -> Lane {
+        let map = self.inner.read().await;
+        let Some(channel) = map.get(session_id) else {
+            return Lane::Main;
+        };
+        let branch = channel
+            .subscribers
+            .lock()
+            .ok()
+            .and_then(|subscribers| subscribers.iter().find(|subscriber| subscriber.id == connection_id).map(|subscriber| subscriber.branch.clone()))
+            .unwrap_or_default();
+        lane_for(channel.main_branch.as_deref(), &branch)
+    }
+
+    /// Who is on which branch, for everyone's People list.
+    pub async fn branches(&self, session_id: &str) -> (Option<String>, Vec<(String, String)>) {
+        let map = self.inner.read().await;
+        let Some(channel) = map.get(session_id) else {
+            return (None, Vec::new());
+        };
+        let mut members: Vec<(String, String)> = channel
+            .subscribers
+            .lock()
+            .map(|subscribers| subscribers.iter().map(|subscriber| (subscriber.user_id.clone(), subscriber.branch.clone())).collect())
+            .unwrap_or_default();
+        members.sort();
+        members.dedup_by(|a, b| a.0 == b.0);
+        (channel.main_branch.clone(), members)
+    }
+
+    pub async fn get_file_in(&self, session_id: &str, lane: &Lane, path: &str) -> Option<String> {
+        match lane {
+            Lane::Main => self.get_file(session_id, path).await,
+            Lane::Branch(branch) => {
+                let map = self.inner.read().await;
+                map.get(session_id)?.branch_files.get(branch)?.get(path).cloned()
+            }
+        }
+    }
+
+    pub async fn save_file_in(&self, session_id: &str, lane: &Lane, path: String, content: String) {
+        match lane {
+            Lane::Main => self.save_file(session_id, path, content).await,
+            Lane::Branch(branch) => {
+                let mut map = self.inner.write().await;
+                if let Some(channel) = map.get_mut(session_id) {
+                    channel.branch_files.entry(branch.clone()).or_default().insert(path, content);
+                    channel.last_activity = Instant::now();
+                }
+            }
+        }
+    }
+
+    /// Every synced file in one lane, for someone catching up.
+    pub async fn files_in(&self, session_id: &str, lane: &Lane) -> HashMap<String, String> {
+        match lane {
+            Lane::Main => self.get_all_files(session_id).await,
+            Lane::Branch(branch) => {
+                let map = self.inner.read().await;
+                map.get(session_id).and_then(|channel| channel.branch_files.get(branch).cloned()).unwrap_or_default()
+            }
+        }
+    }
+
+    /// Sends a saved file to the connections in `lane` (as a patch to those
+    /// that apply patches) and `elsewhere` to everyone on another branch:
+    /// the change as context, which they never write into their files.
+    pub async fn broadcast_file_in(
+        &self,
+        session_id: &str,
+        sender_connection: u64,
+        lane: &Lane,
+        full: &serde_json::Value,
+        patch: Option<&serde_json::Value>,
+        elsewhere: &serde_json::Value,
+    ) {
+        let full = Message::Text(full.to_string().into());
+        let patch = patch.map(|patch| Message::Text(patch.to_string().into()));
+        let elsewhere = Message::Text(elsewhere.to_string().into());
+        let map = self.inner.read().await;
+        let Some(channel) = map.get(session_id) else {
+            return;
+        };
+        let main_branch = channel.main_branch.clone();
+        let Ok(mut subscribers) = channel.subscribers.lock() else {
+            return;
+        };
+        let sender_shares = subscribers
+            .iter()
+            .find(|subscriber| subscriber.id == sender_connection)
+            .is_none_or(|subscriber| subscriber.share_across);
+        subscribers.retain(|subscriber| {
+            if subscriber.pending.load(Ordering::Relaxed) >= MAX_PENDING_PER_CONNECTION {
+                eprintln!("ws: dropping a stalled connection in session {session_id}");
+                return false;
+            }
+            let other_lane = lane_for(main_branch.as_deref(), &subscriber.branch) != *lane;
+            // Across branches only when both people share across branches.
+            if other_lane && !(sender_shares && subscriber.share_across) {
+                return true;
+            }
+            subscriber.pending.fetch_add(1, Ordering::Relaxed);
+            let message = if other_lane {
+                elsewhere.clone()
+            } else {
+                match &patch {
+                    Some(patch) if subscriber.patches => patch.clone(),
+                    _ => full.clone(),
+                }
+            };
+            subscriber.tx.send(message).is_ok()
+        });
     }
 
     /// Sends a saved file to everyone in the session: as a patch to
@@ -1833,10 +2019,24 @@ pub struct WsQuery {
     // applies patches instead of needing every file whole.
     #[serde(default)]
     pub features: Option<String>,
+    // The git branch the client's project is on, so its first catch-up
+    // already comes from the right lane.
+    #[serde(default)]
+    pub branch: Option<String>,
 }
 
 /// What this server can handle, sent in the snapshot so clients know.
-const SERVER_FEATURES: &[&str] = &["file_patch"];
+const SERVER_FEATURES: &[&str] = &["file_patch", "branches"];
+
+/// The lane a connection on `branch` syncs in, given the session's main
+/// branch.
+fn lane_for(main_branch: Option<&str>, branch: &str) -> Lane {
+    if branch.is_empty() || main_branch.is_none_or(|main| main == branch) {
+        Lane::Main
+    } else {
+        Lane::Branch(branch.to_string())
+    }
+}
 
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
@@ -1875,7 +2075,7 @@ pub async fn ws_handler(
     Ok(ws
         .max_message_size(crate::guard::MAX_WS_MESSAGE_BYTES)
         .max_frame_size(crate::guard::MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| handle_socket(socket, state, session_id, user_id, patches)))
+        .on_upgrade(move |socket| handle_socket(socket, state, session_id, user_id, patches, params.branch)))
 }
 
 /// A readable name for every member of the session, keyed by user id. Users
@@ -1907,10 +2107,14 @@ async fn handle_socket(
     session_id: String,
     user_id: String,
     patches: bool,
+    branch: Option<String>,
 ) {
     let mut connection = state.hub.add_peer(&session_id, &user_id).await;
     if patches {
         state.hub.set_patches(&session_id, connection.id, true).await;
+    }
+    if let Some(branch) = branch.as_deref() {
+        state.hub.set_branch(&session_id, connection.id, branch, None).await;
     }
     // A channel with no files yet might be brand new, or might be an empty
     // shell the server just recreated after a restart — rehydrate from the
@@ -2094,7 +2298,7 @@ async fn handle_socket(
                 match incoming {
                     Some(Ok(Message::Pong(_))) => { awaiting_pong = false; }
                     Some(Ok(Message::Text(text))) => {
-                        if let Some(reply) = handle_client_message(&state, &session_id, &user_id, text.as_str()).await
+                        if let Some(reply) = handle_client_message(&state, &session_id, &user_id, connection.id, text.as_str()).await
                             && socket.send(Message::Text(reply.to_string().into())).await.is_err() {
                                 break;
                         }
@@ -2253,6 +2457,13 @@ enum ClientMessage {
         patch: Vec<crate::patch::PatchOp>,
         #[serde(default)]
         origin: Option<String>,
+    },
+    // The git branch this connection's project is on now ("" for none).
+    // Files then sync with others on that branch only.
+    SetBranch {
+        branch: String,
+        #[serde(default)]
+        share_across: Option<bool>,
     },
     // A client couldn't apply a patch (its copy wasn't the base) and wants
     // the whole file. `sender` and `origin` describe the change it missed.
@@ -2594,6 +2805,7 @@ async fn handle_client_message(
     state: &AppState,
     session_id: &str,
     user_id: &str,
+    connection_id: u64,
     text: &str,
 ) -> Option<serde_json::Value> {
     let Ok(message) = serde_json::from_str::<ClientMessage>(text) else {
@@ -2641,15 +2853,16 @@ async fn handle_client_message(
             if let Some(reason) = crate::guard::file_refusal(&path, &content) {
                 return Some(crate::guard::notice(&reason));
             }
+            let lane = state.hub.lane(session_id, connection_id).await;
             if let Some(base_hash) = base_hash
-                && let Some(known) = state.hub.get_file(session_id, &path).await
+                && let Some(known) = state.hub.get_file_in(session_id, &lane, &path).await
                 && known != content
                 && crate::patch::content_hash(&known) != base_hash
             {
                 return Some(json!({"type": "file_resend", "path": path, "known": true}));
             }
             let accepted = json!({"type": "file_accepted", "path": path, "hash": crate::patch::content_hash(&content)});
-            handle_file_save_message(state, session_id, user_id, path, content, origin, None).await;
+            handle_file_save_message(state, session_id, user_id, connection_id, &lane, path, content, origin, None).await;
             Some(accepted)
         }
         ClientMessage::FilePatch {
@@ -2659,7 +2872,8 @@ async fn handle_client_message(
             patch,
             origin,
         } => {
-            let Some(known) = state.hub.get_file(session_id, &path).await else {
+            let lane = state.hub.lane(session_id, connection_id).await;
+            let Some(known) = state.hub.get_file_in(session_id, &lane, &path).await else {
                 return Some(json!({"type": "file_resend", "path": path, "known": false}));
             };
             let resend = json!({"type": "file_resend", "path": path, "known": true});
@@ -2676,19 +2890,32 @@ async fn handle_client_message(
                 return Some(crate::guard::notice(&reason));
             }
             let accepted = json!({"type": "file_accepted", "path": path, "hash": hash});
-            handle_file_save_message(state, session_id, user_id, path, content, origin, Some((base_hash, hash, patch)))
+            handle_file_save_message(state, session_id, user_id, connection_id, &lane, path, content, origin, Some((base_hash, hash, patch)))
                 .await;
             Some(accepted)
+        }
+        ClientMessage::SetBranch { branch, share_across } => {
+            let (lane, main_branch) = state.hub.set_branch(session_id, connection_id, &branch, share_across).await;
+            let branch = clean_branch(&branch);
+            state
+                .hub
+                .broadcast(
+                    session_id,
+                    &json!({"type": "branch_info", "user_id": user_id, "branch": branch, "main_branch": main_branch}),
+                )
+                .await;
+            Some(json!({"type": "branch_set", "branch": branch, "main_branch": main_branch, "main_lane": lane == Lane::Main}))
         }
         ClientMessage::FileFetch { path, sender, origin } => {
             if !crate::guard::is_safe_relative_path(&path) || crate::guard::is_sensitive_path(&path) {
                 return None;
             }
-            let content = state.hub.get_file(session_id, &path).await?;
+            let lane = state.hub.lane(session_id, connection_id).await;
+            let content = state.hub.get_file_in(session_id, &lane, &path).await?;
             // Without a named change, it's the newest version: say whose.
             let (sender, origin) = match sender {
                 Some(sender) => (sender, origin),
-                None => crate::history::versions(&state.pool, session_id, Some(&path), 1)
+                None => crate::history::versions(&state.pool, session_id, Some(&path), lane.history_key(), 1)
                     .await
                     .ok()
                     .and_then(|versions| versions.into_iter().next())
@@ -2719,7 +2946,8 @@ async fn handle_client_message(
             }
         }
         ClientMessage::FilesRequest => {
-            let (files, truncated) = files_for_catch_up(state.hub.get_all_files(session_id).await);
+            let lane = state.hub.lane(session_id, connection_id).await;
+            let (files, truncated) = files_for_catch_up(state.hub.files_in(session_id, &lane).await);
             Some(json!({"type": "session_files", "files": files, "truncated": truncated}))
         }
         ClientMessage::AssignTasks => {
@@ -3010,6 +3238,13 @@ async fn handle_client_message(
             if !crate::guard::is_safe_relative_path(&path) || crate::guard::is_sensitive_path(&path) {
                 return Some(crate::guard::notice(&format!("Not shared live: {path} is a file that usually holds keys or passwords.")));
             }
+            // Live typing works on one shared copy, the main lane's: on
+            // another branch, files move when they're saved.
+            if state.hub.lane(session_id, connection_id).await != Lane::Main {
+                return Some(crate::guard::notice(&format!(
+                    "Not shared live: you're on another branch than the session's main one, so {path} syncs when you save it."
+                )));
+            }
             match state.hub.join_buffer(session_id, user_id, &path).await {
                 Ok(join) => Some(json!({
                     "type": "buffer_joined",
@@ -3029,6 +3264,9 @@ async fn handle_client_message(
         }
         ClientMessage::BufferOp { path, op, origin } => {
             if !crate::guard::is_safe_relative_path(&path) || crate::guard::is_sensitive_path(&path) {
+                return None;
+            }
+            if state.hub.lane(session_id, connection_id).await != Lane::Main {
                 return None;
             }
             let previous_text = state
@@ -3314,10 +3552,13 @@ async fn handle_ai_reply(state: &AppState, session_id: &str, user_id: &str, labe
 
 const AI_REPLY_LABELS: [&str; 3] = ["AI (Ask)", "AI (Plan)", "AI (Agent)"];
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_file_save_message(
     state: &AppState,
     session_id: &str,
     user_id: &str,
+    connection_id: u64,
+    lane: &Lane,
     path: String,
     content: String,
     origin: Option<String>,
@@ -3332,11 +3573,11 @@ async fn handle_file_save_message(
         return;
     }
 
-    let known_content = state.hub.get_file(session_id, &path).await;
+    let known_content = state.hub.get_file_in(session_id, lane, &path).await;
     let previous_content = known_content.clone().unwrap_or_default();
     state
         .hub
-        .save_file(session_id, path.clone(), content.clone())
+        .save_file_in(session_id, lane, path.clone(), content.clone())
         .await;
     // Peers decide locally whether to write it (only when they don't already
     // have a different copy), so a share never clobbers someone's work.
@@ -3352,7 +3593,38 @@ async fn handle_file_save_message(
             "patch": ops,
         })
     });
-    state.hub.broadcast_file(session_id, &full, patched.as_ref()).await;
+    // Teammates on another branch get the change as context: who changed
+    // what on which branch, and the new version to compare with, never to
+    // write into their own files.
+    let elsewhere = json!({
+        "type": "branch_file",
+        "path": path,
+        "sender": user_id,
+        "origin": origin,
+        "branch": lane.history_key(),
+        "previous": known_content,
+        "content": content,
+    });
+    state.hub.broadcast_file_in(session_id, connection_id, lane, &full, patched.as_ref(), &elsewhere).await;
+    if let Err(error) = crate::history::record(
+        &state.pool,
+        session_id,
+        &path,
+        lane.history_key(),
+        &content,
+        known_content.as_deref(),
+        user_id,
+        origin.as_deref(),
+    )
+    .await
+    {
+        eprintln!("history: recording {path} for {session_id} failed: {error}");
+    }
+    // The rest (the session's change list, work lanes and the watching team
+    // agent) follows the main lane, which the whole team builds on.
+    if *lane != Lane::Main {
+        return;
+    }
     if let Some(change) = state
         .hub
         .record_file_save(
@@ -3370,21 +3642,6 @@ async fn handle_file_save_message(
             .broadcast(session_id, &json!({"type": "file_change", "change": change}))
             .await;
         persist_changes(state, session_id).await;
-    }
-    // Every shared version is kept, so the team can go back to any of them
-    // without git.
-    if let Err(error) = crate::history::record(
-        &state.pool,
-        session_id,
-        &path,
-        &content,
-        known_content.as_deref(),
-        user_id,
-        origin.as_deref(),
-    )
-    .await
-    {
-        eprintln!("history: recording {path} for {session_id} failed: {error}");
     }
     check_work_lane(state, session_id, &path, user_id).await;
     trigger_watcher(state, session_id, &path, &previous_content, &content).await;

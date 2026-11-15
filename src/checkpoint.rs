@@ -134,7 +134,7 @@ async fn write_checkpoint(
     // for whatever changed since its newest version.
     for (path, content) in files {
         if crate::guard::file_refusal(path, content).is_none() {
-            crate::history::record(&state.pool, session_id, path, content, None, "live", Some("live")).await?;
+            crate::history::record(&state.pool, session_id, path, "", content, None, "live", Some("live")).await?;
         }
     }
     let id = Uuid::new_v4().to_string();

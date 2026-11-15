@@ -30,13 +30,16 @@ fn line_counts(previous: &str, content: &str) -> (i64, i64) {
     })
 }
 
-/// Records `content` as the newest version of `path`, unless it's the same
-/// as the newest one already kept. `user_id` is who made it; `previous` is
-/// what the file held before, for the lines-changed counts.
+/// Records `content` as the newest version of `path` on `branch` ("" for the
+/// session's main lane), unless it's the same as the newest one already kept.
+/// `user_id` is who made it; `previous` is what the file held before, for the
+/// lines-changed counts.
+#[allow(clippy::too_many_arguments)]
 pub async fn record(
     pool: &sqlx::SqlitePool,
     session_id: &str,
     path: &str,
+    branch: &str,
     content: &str,
     previous: Option<&str>,
     user_id: &str,
@@ -44,9 +47,10 @@ pub async fn record(
 ) -> Result<bool, sqlx::Error> {
     let hash = content_hash(content);
     let newest: Option<(String,)> =
-        sqlx::query_as("SELECT hash FROM file_versions WHERE session_id = ? AND path = ? ORDER BY id DESC LIMIT 1")
+        sqlx::query_as("SELECT hash FROM file_versions WHERE session_id = ? AND path = ? AND branch = ? ORDER BY id DESC LIMIT 1")
             .bind(session_id)
             .bind(path)
+            .bind(branch)
             .fetch_optional(pool)
             .await?;
     if newest.is_some_and(|(newest,)| newest == hash) {
@@ -58,10 +62,11 @@ pub async fn record(
         None => {
             sqlx::query_as(
                 "SELECT b.content FROM file_versions v JOIN file_blobs b ON b.hash = v.hash \
-                 WHERE v.session_id = ? AND v.path = ? ORDER BY v.id DESC LIMIT 1",
+                 WHERE v.session_id = ? AND v.path = ? AND v.branch = ? ORDER BY v.id DESC LIMIT 1",
             )
             .bind(session_id)
             .bind(path)
+            .bind(branch)
             .fetch_optional(pool)
             .await?
         }
@@ -74,11 +79,12 @@ pub async fn record(
         .execute(pool)
         .await?;
     sqlx::query(
-        "INSERT INTO file_versions (session_id, path, hash, user_id, origin, added, removed, created_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO file_versions (session_id, path, branch, hash, user_id, origin, added, removed, created_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(session_id)
     .bind(path)
+    .bind(branch)
     .bind(&hash)
     .bind(user_id)
     .bind(origin)
@@ -89,13 +95,15 @@ pub async fn record(
     .await?;
     // Keep the newest versions of this file; drop the rest.
     sqlx::query(
-        "DELETE FROM file_versions WHERE session_id = ? AND path = ? AND id NOT IN \
-         (SELECT id FROM file_versions WHERE session_id = ? AND path = ? ORDER BY id DESC LIMIT ?)",
+        "DELETE FROM file_versions WHERE session_id = ? AND path = ? AND branch = ? AND id NOT IN \
+         (SELECT id FROM file_versions WHERE session_id = ? AND path = ? AND branch = ? ORDER BY id DESC LIMIT ?)",
     )
     .bind(session_id)
     .bind(path)
+    .bind(branch)
     .bind(session_id)
     .bind(path)
+    .bind(branch)
     .bind(VERSIONS_KEPT_PER_FILE)
     .execute(pool)
     .await?;
@@ -127,12 +135,16 @@ pub struct ListParams {
     path: Option<String>,
     #[serde(default)]
     limit: Option<i64>,
+    // The branch whose versions to list; the main lane's when left out.
+    #[serde(default)]
+    branch: Option<String>,
 }
 
 pub async fn versions(
     pool: &sqlx::SqlitePool,
     session_id: &str,
     path: Option<&str>,
+    branch: &str,
     limit: i64,
 ) -> Result<Vec<VersionInfo>, sqlx::Error> {
     let limit = limit.clamp(1, MAX_LISTED);
@@ -140,10 +152,11 @@ pub async fn versions(
         Some(path) => {
             sqlx::query_as(
                 "SELECT id, path, user_id, origin, added, removed, created_at FROM file_versions \
-                 WHERE session_id = ? AND path = ? ORDER BY id DESC LIMIT ?",
+                 WHERE session_id = ? AND path = ? AND branch = ? ORDER BY id DESC LIMIT ?",
             )
             .bind(session_id)
             .bind(path)
+            .bind(branch)
             .bind(limit)
             .fetch_all(pool)
             .await
@@ -151,9 +164,10 @@ pub async fn versions(
         None => {
             sqlx::query_as(
                 "SELECT id, path, user_id, origin, added, removed, created_at FROM file_versions \
-                 WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+                 WHERE session_id = ? AND branch = ? ORDER BY id DESC LIMIT ?",
             )
             .bind(session_id)
+            .bind(branch)
             .bind(limit)
             .fetch_all(pool)
             .await
@@ -170,7 +184,8 @@ pub async fn list_handler(
     Query(params): Query<ListParams>,
 ) -> Result<Json<Vec<VersionInfo>>, AppError> {
     crate::handlers::require_member(&state, &session_id, &user_id).await?;
-    Ok(Json(versions(&state.pool, &session_id, params.path.as_deref(), params.limit.unwrap_or(50)).await?))
+    let branch = crate::ws::clean_branch(params.branch.as_deref().unwrap_or_default());
+    Ok(Json(versions(&state.pool, &session_id, params.path.as_deref(), &branch, params.limit.unwrap_or(50)).await?))
 }
 
 #[derive(Serialize)]
@@ -211,23 +226,42 @@ mod tests {
     #[tokio::test]
     async fn versions_are_kept_once_per_change_and_can_be_read_back() {
         let pool = crate::db::init_pool("sqlite::memory:").await.unwrap();
-        assert!(record(&pool, "s", "a.py", "x = 1\n", None, "alice", None).await.unwrap());
+        assert!(record(&pool, "s", "a.py", "", "x = 1\n", None, "alice", None).await.unwrap());
         // Saving the same text again isn't a new version.
-        assert!(!record(&pool, "s", "a.py", "x = 1\n", Some("x = 1\n"), "bob", None).await.unwrap());
-        assert!(record(&pool, "s", "a.py", "x = 2\ny = 3\n", Some("x = 1\n"), "bob", Some("agent")).await.unwrap());
+        assert!(!record(&pool, "s", "a.py", "", "x = 1\n", Some("x = 1\n"), "bob", None).await.unwrap());
+        assert!(record(&pool, "s", "a.py", "", "x = 2\ny = 3\n", Some("x = 1\n"), "bob", Some("agent")).await.unwrap());
         // Going back to an earlier text is a version, but stores no new copy.
-        assert!(record(&pool, "s", "a.py", "x = 1\n", Some("x = 2\ny = 3\n"), "alice", None).await.unwrap());
-        assert!(record(&pool, "s", "b.py", "z\n", None, "alice", None).await.unwrap());
-        assert!(record(&pool, "other", "a.py", "secret\n", None, "carol", None).await.unwrap());
+        assert!(record(&pool, "s", "a.py", "", "x = 1\n", Some("x = 2\ny = 3\n"), "alice", None).await.unwrap());
+        assert!(record(&pool, "s", "b.py", "", "z\n", None, "alice", None).await.unwrap());
+        assert!(record(&pool, "other", "a.py", "", "secret\n", None, "carol", None).await.unwrap());
 
-        let listed = versions(&pool, "s", Some("a.py"), 50).await.unwrap();
+        let listed = versions(&pool, "s", Some("a.py"), "", 50).await.unwrap();
         assert_eq!(listed.iter().map(|v| v.user_id.as_str()).collect::<Vec<_>>(), ["alice", "bob", "alice"]);
         assert_eq!((listed[1].added, listed[1].removed), (2, 1));
         assert_eq!(listed[1].origin.as_deref(), Some("agent"));
-        assert_eq!(versions(&pool, "s", None, 50).await.unwrap().len(), 4, "one session's versions only");
+        assert_eq!(versions(&pool, "s", None, "", 50).await.unwrap().len(), 4, "one session's versions only");
 
         let (blobs,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM file_blobs").fetch_one(&pool).await.unwrap();
         assert_eq!(blobs, 4, "x = 1 is stored once though it's two versions");
         assert_eq!(prune_blobs(&pool).await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn each_branch_keeps_its_own_versions() {
+        let pool = crate::db::init_pool("sqlite::memory:").await.unwrap();
+        assert!(record(&pool, "s", "cart.py", "", "def total(self):\n", None, "alice", None).await.unwrap());
+        // The same text on another branch is that branch's first version.
+        assert!(record(&pool, "s", "cart.py", "feature/tax", "def total(self):\n", None, "bob", None).await.unwrap());
+        assert!(
+            record(&pool, "s", "cart.py", "feature/tax", "def total(self, tax):\n", None, "bob", None).await.unwrap()
+        );
+
+        let main = versions(&pool, "s", Some("cart.py"), "", 50).await.unwrap();
+        assert_eq!(main.iter().map(|v| v.user_id.as_str()).collect::<Vec<_>>(), ["alice"]);
+        let branch = versions(&pool, "s", Some("cart.py"), "feature/tax", 50).await.unwrap();
+        assert_eq!(branch.iter().map(|v| v.user_id.as_str()).collect::<Vec<_>>(), ["bob", "bob"]);
+        // Lines changed are counted against the branch's own previous version.
+        assert_eq!((branch[0].added, branch[0].removed), (1, 1));
+        assert_eq!(versions(&pool, "s", None, "", 50).await.unwrap().len(), 1, "the main lane's list has no branch versions");
     }
 }

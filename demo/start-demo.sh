@@ -49,7 +49,12 @@ EXTENSIONS_PUBLISH_TOKEN="demo-local-$(uuidgen)"
 export EXTENSIONS_PUBLISH_TOKEN
 DATABASE_URL="sqlite:$STATE/demo.db" JWT_SECRET=demo-local-only PORT=$PORT \
   nohup "$SERVER" >"$STATE/server.log" 2>&1 </dev/null &
-unset ANTHROPIC_API_KEY IDE_ANTHROPIC_KEY
+unset ANTHROPIC_API_KEY
+# The release app reads AI keys from the Keychain, which the demo's separate
+# profiles can't see; give each demo app the same key the server got.
+KEY_ENV=()
+if [ -n "$IDE_ANTHROPIC_KEY" ]; then KEY_ENV=(--env ANTHROPIC_API_KEY="$IDE_ANTHROPIC_KEY"); fi
+unset IDE_ANTHROPIC_KEY
 echo $! >"$STATE/server.pid"
 cd "$DEMO"
 for _ in $(seq 1 60); do
@@ -133,7 +138,8 @@ launch() {
 {
   "collab_mode": "multi",
   "session": { "trust_all_worktrees": true },
-  "extend_comment_on_newline": false
+  "extend_comment_on_newline": false,
+  "agent": { "default_model": { "provider": "anthropic", "model": "claude-sonnet-5-5" } }
 }
 JSON
   # Linked, not copied, so the demo windows see your saved AI keys.
@@ -143,6 +149,7 @@ JSON
     --env BLUEPRINT_DEV_TOKEN="$token" --env BLUEPRINT_DEV_USER_ID="$user_id" \
     --env I_IDE_API_URL="$BASE/api" \
     --env ZED_STATELESS=1 \
+    ${KEY_ENV[@]+"${KEY_ENV[@]}"} \
     --stdout "$home/ide.log" --stderr "$home/ide.log" \
     --args --user-data-dir "$home/data" "$project_dir" "i-ide://i-mode/join/$SESSION.$INVITE"
   # `open` returns before the app's pid is known; find it by its data dir.
