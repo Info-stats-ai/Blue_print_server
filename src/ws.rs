@@ -2114,7 +2114,15 @@ async fn handle_socket(
         state.hub.set_patches(&session_id, connection.id, true).await;
     }
     if let Some(branch) = branch.as_deref() {
-        state.hub.set_branch(&session_id, connection.id, branch, None).await;
+        let (_, main_branch) = state.hub.set_branch(&session_id, connection.id, branch, None).await;
+        // Everyone already here learns which branch the newcomer is on.
+        state
+            .hub
+            .broadcast(
+                &session_id,
+                &json!({"type": "branch_info", "user_id": user_id, "branch": clean_branch(branch), "main_branch": main_branch}),
+            )
+            .await;
     }
     // A channel with no files yet might be brand new, or might be an empty
     // shell the server just recreated after a restart — rehydrate from the
@@ -2134,6 +2142,7 @@ async fn handle_socket(
         .await
         .unwrap_or_default();
     let peers = state.hub.peer_ids(&session_id).await;
+    let branch_map = state.hub.branches(&session_id).await;
     let blueprint = state.hub.get_blueprint(&session_id).await;
     // Phase 7 resume: a reconnecting client needs its files/chat history
     // back, not just contracts/intents/blueprint — those three were already
@@ -2217,6 +2226,8 @@ async fn handle_socket(
         "invite_token": invite_token,
         "type": "snapshot",
         "features": SERVER_FEATURES,
+        "main_branch": branch_map.0,
+        "branches": branch_map.1.iter().map(|(user_id, branch)| json!({"user_id": user_id, "branch": branch})).collect::<Vec<_>>(),
         "contracts": contracts,
         "intents": intents,
         "peers": peers,

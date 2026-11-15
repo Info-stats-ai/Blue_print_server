@@ -80,8 +80,17 @@ async def run():
     b = BranchPeer("bob", people["bob"]["token"], session, "main")
     c = BranchPeer("carol", people["carol"]["token"], session, "feature/tax")
     d = BranchPeer("dave", people["dave"]["token"], session, "feature/tax")
+    snapshots = {}
     for peer in (a, b, c, d):
-        check(f"{peer.name} connects", await peer.connect() is not None)
+        snapshots[peer.name] = await peer.connect()
+        check(f"{peer.name} connects", snapshots[peer.name] is not None)
+    dave_snapshot = snapshots["dave"]
+    branches = {entry["user_id"]: entry["branch"] for entry in dave_snapshot.get("branches", [])}
+    check("the newest joiner's snapshot has everyone's branch and the main one",
+          dave_snapshot.get("main_branch") == "main" and branches.get(people["carol"]["user_id"]) == "feature/tax"
+          and branches.get(alice["user_id"]) == "main", str(dave_snapshot.get("branches")))
+    told = await a.wait(lambda m: m.get("type") == "branch_info" and m.get("user_id") == people["carol"]["user_id"])
+    check("people already there hear a newcomer's branch", told is not None and told["branch"] == "feature/tax")
 
     base = "class Cart:\n    def total(self):\n        return sum(self.items.values())\n"
     await a.send({"type": "file_save", "path": "cart.py", "content": base})
@@ -141,7 +150,9 @@ async def run():
     await d.send({"type": "set_branch", "branch": "main"})
     set_reply = await d.wait(lambda m: m.get("type") == "branch_set")
     check("Dave's switch is confirmed as the main lane", set_reply is not None and set_reply["main_lane"] is True)
-    info = await a.wait(lambda m: m.get("type") == "branch_info" and m.get("user_id") == people["dave"]["user_id"])
+    info = await a.wait(
+        lambda m: m.get("type") == "branch_info" and m.get("user_id") == people["dave"]["user_id"] and m.get("branch") == "main"
+    )
     check("Alice hears Dave changed branch", info is not None and info["branch"] == "main" and info["main_branch"] == "main")
     await a.send({"type": "file_save", "path": "notes.md", "content": "hello\n", "base_hash": None})
     check("Dave now gets main-lane files", (await d.wait(is_file("notes.md"))) is not None)
