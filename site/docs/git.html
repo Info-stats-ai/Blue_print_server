@@ -9,4 +9,15 @@
 <p>Press <kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>G</kbd> then <kbd>B</kbd> to turn on Git blame for the current file.</p>
 <h2>Git and team sessions</h2>
 <p>A session keeps its own versions of every synced file, separate from your commit history; see <a href="/docs/live-editing">Syncing and merging</a>. If you also commit, agree who commits what. A <a href="/docs/tasks">task board</a> with one owner per task makes this easier.</p>
+<h2 id="branches">Teammates on different branches</h2>
+<p>I-IDE knows which git branch each person is on, and keeps branches apart:</p>
+<ul>
+  <li><strong>Same branch:</strong> files sync live, as usual.</li>
+  <li><strong>Different branches:</strong> files never cross. A teammate's change on another branch reaches you as <em>context</em>: Team activity and your AIs hear what changed, but your files stay as they are.</li>
+  <li><strong>Cross-branch radar:</strong> if their change will break your code once their branch is merged, a card lists the calls, before anyone merges.</li>
+  <li><strong>Merge forecast:</strong> if you and they changed the same lines, a card says the file will conflict when the branches merge. It uses git's merge base, so it's a real forecast, not a guess.</li>
+  <li><strong>Plan the merge:</strong> your AI plans how to merge in Plan mode. It reads, it doesn't change files.</li>
+</ul>
+<p>Switching branch (in a terminal or the Git panel) is noticed within seconds, and what the app knew about the old branch's files is dropped, so a switch can never bring one branch's code into another. Version history is kept per branch.</p>
+<p>It's your choice: in Team activity, or <strong>AI &amp; sharing…</strong> → <strong>Teammates on other branches</strong>, turn sharing across branches off. Then only people on your branch see your changes, in both directions. Without git, everyone shares one copy, as before.</p>
 </article>
