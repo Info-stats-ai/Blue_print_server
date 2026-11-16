@@ -2026,7 +2026,7 @@ pub struct WsQuery {
 }
 
 /// What this server can handle, sent in the snapshot so clients know.
-const SERVER_FEATURES: &[&str] = &["file_patch", "branches"];
+const SERVER_FEATURES: &[&str] = &["file_patch", "branches", "context_safeguards"];
 
 /// The lane a connection on `branch` syncs in, given the session's main
 /// branch.
@@ -2175,6 +2175,7 @@ async fn handle_socket(
         .await;
     let agent_runs = state.hub.recent_agent_runs(&session_id).await;
     let decisions = crate::memory::decisions(&state.pool, &session_id).await;
+    let context_flags = crate::memory::flags(&state.pool, &session_id).await;
     let claims = state.hub.get_claims(&session_id).await;
     let catch_up = state.hub.catch_up_digest(&session_id, &user_id).await;
     let presence = state.hub.get_presence(&session_id).await;
@@ -2244,6 +2245,7 @@ async fn handle_socket(
         "agent_steps": agent_steps,
         "agent_runs": agent_runs,
         "decisions": decisions,
+        "context_flags": context_flags,
         "claims": claims,
         "catch_up": catch_up,
         "presence": presence,
@@ -2585,8 +2587,25 @@ enum ClientMessage {
         note: Option<String>,
     },
     // Pin a line from the chat as a team decision; every agent gets these.
-    PinDecision { text: String },
+    // With `check`, a decision that may change pinned ones isn't pinned yet:
+    // the sender gets `decision_check` and chooses to replace or keep both.
+    // With `replaces`, the new decision takes that one's place.
+    PinDecision {
+        text: String,
+        #[serde(default)]
+        replaces: Option<i64>,
+        #[serde(default)]
+        check: bool,
+    },
     UnpinDecision { id: i64 },
+    // "This is wrong": withholds an agent run, an agent step or the
+    // discussion summary from every agent until it's unflagged.
+    FlagContext {
+        key: String,
+        #[serde(default)]
+        note: Option<String>,
+    },
+    UnflagContext { key: String },
     // "I received this file": whether it is now in the sender's copy or
     // waiting for their review. Lets everyone see who has which version.
     FileAck { path: String, applied: bool },
@@ -3151,9 +3170,17 @@ async fn handle_client_message(
             }
             None
         }
-        ClientMessage::PinDecision { text } => {
-            match crate::memory::pin(&state.pool, session_id, user_id, &text).await {
-                Ok(()) => {
+        ClientMessage::PinDecision { text, replaces, check } => {
+            if check && replaces.is_none() {
+                let current = crate::memory::decisions(&state.pool, session_id).await;
+                let related = crate::memory::related_decisions(&text, &current);
+                if !related.is_empty() {
+                    let text = crate::memory::clean_decision(&text).unwrap_or_default();
+                    return Some(json!({"type": "decision_check", "text": text, "related": related}));
+                }
+            }
+            match crate::memory::pin(&state.pool, session_id, user_id, &text, replaces).await {
+                Ok(_) => {
                     let decisions = crate::memory::decisions(&state.pool, session_id).await;
                     state.hub.broadcast(session_id, &json!({"type": "decisions", "decisions": decisions})).await;
                     None
@@ -3165,6 +3192,32 @@ async fn handle_client_message(
             crate::memory::unpin(&state.pool, session_id, id).await;
             let decisions = crate::memory::decisions(&state.pool, session_id).await;
             state.hub.broadcast(session_id, &json!({"type": "decisions", "decisions": decisions})).await;
+            None
+        }
+        ClientMessage::FlagContext { key, note } => {
+            if let Err(reason) = crate::memory::flag(&state.pool, session_id, user_id, &key, note.as_deref()).await {
+                return Some(json!({"type": "error", "message": reason}));
+            }
+            let flags = crate::memory::flags(&state.pool, session_id).await;
+            state.hub.broadcast(session_id, &json!({"type": "context_flags", "flags": flags})).await;
+            // A wrong summary is rewritten with the correction; until then
+            // clients keep it from their agents.
+            if key.trim() == "digest" {
+                let state = state.clone();
+                let session_id = session_id.to_string();
+                let note = note.unwrap_or_default();
+                tokio::spawn(async move {
+                    if let Err(error) = crate::team::correct_digest(&state, &session_id, &note).await {
+                        eprintln!("team: correcting the summary in {session_id} failed: {error}");
+                    }
+                });
+            }
+            None
+        }
+        ClientMessage::UnflagContext { key } => {
+            crate::memory::unflag(&state.pool, session_id, key.trim()).await;
+            let flags = crate::memory::flags(&state.pool, session_id).await;
+            state.hub.broadcast(session_id, &json!({"type": "context_flags", "flags": flags})).await;
             None
         }
         ClientMessage::AgentRun { run_id, agent, goal, status, files, summary, remember, tokens } => {

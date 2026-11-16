@@ -10,6 +10,14 @@
 //!
 //! Nothing is embedded before keys and passwords are masked, and embedding
 //! counts against the session's daily AI budget.
+//!
+//! Safeguards keep one wrong claim from spreading to every agent:
+//! - a decision can replace an older one, which then stops being served;
+//! - an agent run (and its steps) is only remembered once a teammate accepts
+//!   it, and never once someone sent it back (in a one-person session the
+//!   owner's own runs count, since nobody else could review them);
+//! - anything a person flags as wrong is withheld;
+//! - every hit says where it came from, so agents can weigh it.
 
 use std::collections::{HashMap, HashSet};
 
@@ -62,26 +70,153 @@ pub async fn decisions(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<Decisio
 }
 
 /// Pins a decision; refuses past the per-session limit so the list stays
-/// short enough to give every agent.
-pub async fn pin(pool: &sqlx::SqlitePool, session_id: &str, user_id: &str, text: &str) -> Result<(), &'static str> {
+/// short enough to give every agent. With `replaces`, the new decision takes
+/// the old one's place: the old one stops being served (to agents and in
+/// memory search) but is kept with a pointer to what replaced it.
+pub async fn pin(
+    pool: &sqlx::SqlitePool,
+    session_id: &str,
+    user_id: &str,
+    text: &str,
+    replaces: Option<i64>,
+) -> Result<i64, &'static str> {
     let text = clean_decision(text).ok_or("a decision needs some text")?;
-    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM decisions WHERE session_id = ? AND removed = 0")
-        .bind(session_id)
-        .fetch_one(pool)
-        .await
-        .map_err(|_| "couldn't save the decision")?;
-    if count >= MAX_DECISIONS {
-        return Err("this session already has 30 pinned decisions; unpin one first");
+    if let Some(old) = replaces {
+        let live: Option<(i64,)> = sqlx::query_as("SELECT id FROM decisions WHERE session_id = ? AND id = ? AND removed = 0")
+            .bind(session_id)
+            .bind(old)
+            .fetch_optional(pool)
+            .await
+            .map_err(|_| "couldn't save the decision")?;
+        if live.is_none() {
+            return Err("the decision you're replacing was already unpinned or replaced");
+        }
+    } else {
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM decisions WHERE session_id = ? AND removed = 0")
+            .bind(session_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|_| "couldn't save the decision")?;
+        if count >= MAX_DECISIONS {
+            return Err("this session already has 30 pinned decisions; unpin one first");
+        }
     }
-    sqlx::query("INSERT INTO decisions (session_id, text, pinned_by, created_at) VALUES (?, ?, ?, ?)")
+    let mut transaction = pool.begin().await.map_err(|_| "couldn't save the decision")?;
+    let id = sqlx::query("INSERT INTO decisions (session_id, text, pinned_by, created_at) VALUES (?, ?, ?, ?)")
         .bind(session_id)
         .bind(&text)
         .bind(user_id)
         .bind(chrono::Utc::now().to_rfc3339())
-        .execute(pool)
+        .execute(&mut *transaction)
         .await
-        .map_err(|_| "couldn't save the decision")?;
+        .map_err(|_| "couldn't save the decision")?
+        .last_insert_rowid();
+    if let Some(old) = replaces {
+        sqlx::query("UPDATE decisions SET removed = 1, superseded_by = ? WHERE session_id = ? AND id = ?")
+            .bind(id)
+            .bind(session_id)
+            .bind(old)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|_| "couldn't save the decision")?;
+    }
+    transaction.commit().await.map_err(|_| "couldn't save the decision")?;
+    Ok(id)
+}
+
+/// Pinned decisions that `text` may change or contradict: ones about the same
+/// thing (they share at least two key words, and those make up at least a
+/// third of the shorter one's). Shown before pinning, so the person decides
+/// whether the new one replaces the old or both stand. No AI call.
+pub fn related_decisions(text: &str, decisions: &[Decision]) -> Vec<Decision> {
+    let new_terms: HashSet<String> = terms(text).into_iter().collect();
+    decisions
+        .iter()
+        .filter(|decision| {
+            let old_terms: HashSet<String> = terms(&decision.text).into_iter().collect();
+            let shared = new_terms.intersection(&old_terms).count();
+            let smaller = new_terms.len().min(old_terms.len()).max(1);
+            shared >= 2 && shared * 3 >= smaller
+        })
+        .cloned()
+        .collect()
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ContextFlag {
+    /// What's flagged: `run:{user}:{run}`, `step:{user}:{hash}` or `digest`.
+    pub key: String,
+    pub flagged_by: String,
+    pub note: Option<String>,
+    pub at: String,
+}
+
+/// A flag key the clients and memory search agree on. Steps are keyed by
+/// who said it and a stable hash of what they said ([`text_key`]).
+pub fn clean_flag_key(key: &str) -> Option<String> {
+    let key = key.trim();
+    let valid = key.len() <= 200
+        && (key == "digest" || key.starts_with("run:") || key.starts_with("step:"))
+        && key.chars().all(|c| c.is_ascii_alphanumeric() || "-_:.@".contains(c));
+    valid.then(|| key.to_string())
+}
+
+/// FNV-1a over the text, in hex: the same on every client and server build
+/// (unlike Rust's `DefaultHasher`), so a step's key is stable everywhere.
+pub fn text_key(text: &str) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in text.trim().as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+pub async fn flags(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<ContextFlag> {
+    let rows: Vec<(String, String, Option<String>, String)> = sqlx::query_as(
+        "SELECT item_key, flagged_by, note, created_at FROM context_flags WHERE session_id = ? ORDER BY created_at",
+    )
+    .bind(session_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    rows.into_iter().map(|(key, flagged_by, note, at)| ContextFlag { key, flagged_by, note, at }).collect()
+}
+
+pub async fn flag(pool: &sqlx::SqlitePool, session_id: &str, user_id: &str, key: &str, note: Option<&str>) -> Result<(), &'static str> {
+    let key = clean_flag_key(key).ok_or("that can't be flagged")?;
+    let note = note
+        .map(|note| crate::guard::redact_secrets(&note.trim().chars().take(MAX_DECISION_CHARS).collect::<String>()))
+        .filter(|note| !note.is_empty());
+    sqlx::query(
+        "INSERT INTO context_flags (session_id, item_key, flagged_by, note, created_at) VALUES (?, ?, ?, ?, ?) \
+         ON CONFLICT(session_id, item_key) DO UPDATE SET flagged_by = excluded.flagged_by, note = excluded.note, \
+         created_at = excluded.created_at",
+    )
+    .bind(session_id)
+    .bind(&key)
+    .bind(user_id)
+    .bind(&note)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .execute(pool)
+    .await
+    .map_err(|_| "couldn't save the flag")?;
     Ok(())
+}
+
+pub async fn unflag(pool: &sqlx::SqlitePool, session_id: &str, key: &str) {
+    let _ = sqlx::query("DELETE FROM context_flags WHERE session_id = ? AND item_key = ?")
+        .bind(session_id)
+        .bind(key)
+        .execute(pool)
+        .await;
+}
+
+/// Whether team memory may serve an agent run: a teammate accepted it and
+/// nobody sent it back. In a one-person session the owner's run counts.
+pub fn run_is_trusted(reviews: &[serde_json::Value], solo: bool) -> bool {
+    let verdicts: Vec<&str> = reviews.iter().filter_map(|review| review["verdict"].as_str()).collect();
+    !verdicts.contains(&"changes") && (solo || verdicts.contains(&"accepted"))
 }
 
 pub async fn unpin(pool: &sqlx::SqlitePool, session_id: &str, id: i64) {
@@ -96,6 +231,10 @@ pub async fn unpin(pool: &sqlx::SqlitePool, session_id: &str, id: i64) {
 pub struct MemoryHit {
     /// "decision", "task", "chat", "run" or "step".
     pub kind: &'static str,
+    /// Where it came from, for agents to weigh it: "decided by people",
+    /// "said in chat", "task board", "agent work a teammate accepted" or
+    /// "an agent said, unchecked".
+    pub source: &'static str,
     pub text: String,
     pub score: f64,
     pub at: String,
@@ -104,6 +243,7 @@ pub struct MemoryHit {
 struct Item {
     key: String,
     kind: &'static str,
+    source: &'static str,
     text: String,
     at: String,
 }
@@ -114,10 +254,18 @@ async fn corpus(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<Item> {
         items.push(Item {
             key: format!("decision:{}", decision.id),
             kind: "decision",
+            source: "decided by people",
             text: decision.text,
             at: decision.created_at,
         });
     }
+    let flagged: HashSet<String> = flags(pool, session_id).await.into_iter().map(|flag| flag.key).collect();
+    let (members,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_members WHERE session_id = ?")
+        .bind(session_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or((0,));
+    let solo = members <= 1;
     let runs: Vec<(String, String, String, String, Option<String>, String, String)> = sqlx::query_as(
         "SELECT user_id, run_id, goal, files, summary, reviews, updated_at FROM agent_runs \
          WHERE session_id = ? ORDER BY updated_at DESC LIMIT ?",
@@ -127,10 +275,17 @@ async fn corpus(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<Item> {
     .fetch_all(pool)
     .await
     .unwrap_or_default();
+    // Runs memory may serve; their steps may be served too.
+    let mut trusted_runs: HashSet<(String, String)> = HashSet::new();
     for (user_id, run_id, goal, files, summary, reviews, at) in runs {
+        let key = format!("run:{user_id}:{run_id}");
+        let reviews: Vec<serde_json::Value> = serde_json::from_str(&reviews).unwrap_or_default();
+        if !run_is_trusted(&reviews, solo) || flagged.contains(&key) {
+            continue;
+        }
+        trusted_runs.insert((user_id.clone(), run_id.clone()));
         let files: Vec<String> = serde_json::from_str(&files).unwrap_or_default();
-        let notes: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&reviews)
-            .unwrap_or_default()
+        let notes: Vec<String> = reviews
             .iter()
             .filter_map(|review| {
                 let verdict = review["verdict"].as_str()?;
@@ -148,18 +303,29 @@ async fn corpus(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<Item> {
         if !notes.is_empty() {
             text.push_str(&format!(" — reviews: {}", notes.join("; ")));
         }
-        items.push(Item { key: format!("run:{user_id}:{run_id}"), kind: "run", text, at });
+        let source = if solo && notes.is_empty() { "an agent said, unchecked" } else { "agent work a teammate accepted" };
+        items.push(Item { key, kind: "run", source, text, at });
     }
-    let steps: Vec<(i64, String, String, String)> = sqlx::query_as(
-        "SELECT id, agent, text, created_at FROM agent_steps WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+    let steps: Vec<(String, Option<String>, String, String, String)> = sqlx::query_as(
+        "SELECT user_id, run_id, agent, text, created_at FROM agent_steps WHERE session_id = ? ORDER BY id DESC LIMIT ?",
     )
     .bind(session_id)
     .bind(SEARCH_CORPUS_LIMIT)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
-    for (id, agent, text, at) in steps {
-        items.push(Item { key: format!("step:{id}"), kind: "step", text: format!("{agent}: {text}"), at });
+    for (user_id, run_id, agent, text, at) in steps {
+        // A step of a run that isn't trusted waits with its run.
+        if let Some(run_id) = run_id
+            && !trusted_runs.contains(&(user_id.clone(), run_id))
+        {
+            continue;
+        }
+        let key = format!("step:{user_id}:{}", text_key(&text));
+        if flagged.contains(&key) {
+            continue;
+        }
+        items.push(Item { key, kind: "step", source: "an agent said, unchecked", text: format!("{agent}: {text}"), at });
     }
     let board: Option<(String, String)> =
         sqlx::query_as("SELECT board, updated_at FROM session_tasks WHERE session_id = ?")
@@ -182,7 +348,13 @@ async fn corpus(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<Item> {
                 text.push_str(&format!(" — files: {}", task.files.join(", ")));
             }
             // Keyed by content too: a task's status and owner change.
-            items.push(Item { key: format!("task:{}:{:x}", task.id, fingerprint(&text)), kind: "task", text, at: at.clone() });
+            items.push(Item {
+                key: format!("task:{}:{:x}", task.id, fingerprint(&text)),
+                kind: "task",
+                source: "task board",
+                text,
+                at: at.clone(),
+            });
         }
     }
     let chat: Vec<(i64, String, String, String)> = sqlx::query_as(
@@ -196,7 +368,8 @@ async fn corpus(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<Item> {
     for (id, sender, text, at) in chat {
         if text.chars().count() >= MIN_CHAT_CHARS {
             let text: String = text.chars().take(1_500).collect();
-            items.push(Item { key: format!("chat:{id}"), kind: "chat", text: format!("{sender}: {text}"), at });
+            let source = if sender == crate::ws::AGENT_USER_ID { "an agent said, unchecked" } else { "said in chat" };
+            items.push(Item { key: format!("chat:{id}"), kind: "chat", source, text: format!("{sender}: {text}"), at });
         }
     }
     for item in &mut items {
@@ -409,7 +582,7 @@ pub async fn search(
                 Some(semantic) => 0.65 * semantic[index] + 0.35 * keyword,
                 None => keyword,
             };
-            MemoryHit { kind: item.kind, text: item.text, score, at: item.at }
+            MemoryHit { kind: item.kind, source: item.source, text: item.text, score, at: item.at }
         })
         .filter(|hit| hit.score > 0.05)
         .collect();
@@ -467,6 +640,144 @@ mod tests {
         assert_eq!(best, 1);
         assert_eq!(bm25("", &docs), vec![0.0; 3]);
         assert!(cosine(&[1.0, 0.0], &[1.0, 0.0]) > 0.99 && cosine(&[1.0, 0.0], &[0.0, 1.0]).abs() < 1e-9);
+    }
+
+    fn decision(id: i64, text: &str) -> Decision {
+        Decision { id, text: text.into(), pinned_by: "alice".into(), created_at: String::new() }
+    }
+
+    #[test]
+    fn a_decision_about_the_same_thing_is_offered_for_replacing() {
+        let pinned = vec![
+            decision(1, "Late fees are 25 cents per day, capped at 5 dollars"),
+            decision(2, "Use SQLite for storage"),
+            decision(3, "Invoices are numbered INV-0001 upward"),
+        ];
+        let related = related_decisions("Late fee is 50 cents per day now", &pinned);
+        assert_eq!(related.iter().map(|d| d.id).collect::<Vec<_>>(), vec![1]);
+        assert!(related_decisions("Store everything in Postgres instead", &pinned).is_empty(), "one shared word isn't enough");
+        assert!(related_decisions("Add a dark theme", &pinned).is_empty());
+    }
+
+    #[test]
+    fn only_runs_a_teammate_accepted_are_trusted() {
+        let review = |verdict: &str| serde_json::json!({"reviewer_id": "bob", "verdict": verdict});
+        assert!(!run_is_trusted(&[], false), "nobody looked at it yet");
+        assert!(run_is_trusted(&[review("accepted")], false));
+        assert!(!run_is_trusted(&[review("accepted"), review("changes")], false), "someone sent it back");
+        assert!(run_is_trusted(&[], true), "alone, nobody else could review it");
+        assert!(!run_is_trusted(&[review("changes")], true));
+    }
+
+    #[test]
+    fn flag_keys_and_step_keys_are_stable_and_safe() {
+        assert_eq!(clean_flag_key(" digest ").as_deref(), Some("digest"));
+        assert!(clean_flag_key("run:u-1:r_2").is_some());
+        assert!(clean_flag_key("decision:4").is_none(), "decisions are unpinned, not flagged");
+        assert!(clean_flag_key("step:u1:abc; DROP TABLE").is_none());
+        assert!(clean_flag_key(&format!("run:{}", "x".repeat(300))).is_none());
+        // FNV-1a test vectors; the app computes the same.
+        assert_eq!(text_key(""), "cbf29ce484222325");
+        assert_eq!(text_key("a"), "af63dc4c8601ec8c");
+        assert_eq!(text_key("  a \n"), text_key("a"));
+    }
+
+    async fn ledger_pool(members: &[&str]) -> sqlx::SqlitePool {
+        let pool = crate::db::init_pool("sqlite::memory:").await.unwrap();
+        for user in members {
+            sqlx::query("INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, '', '')")
+                .bind(user)
+                .bind(format!("{user}@example.test"))
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        sqlx::query("INSERT INTO sessions (id, name, owner_id, created_at) VALUES ('s', 'Ledger', ?, '')")
+            .bind(members[0])
+            .execute(&pool)
+            .await
+            .unwrap();
+        for user in members {
+            sqlx::query("INSERT INTO session_members (session_id, user_id, role, joined_at) VALUES ('s', ?, 'member', '')")
+                .bind(user)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        pool
+    }
+
+    async fn add_run(pool: &sqlx::SqlitePool, user: &str, run: &str, goal: &str, reviews: &str) {
+        sqlx::query(
+            "INSERT INTO agent_runs (session_id, user_id, run_id, agent, goal, status, files, summary, reviews, started_at, updated_at) \
+             VALUES ('s', ?, ?, 'I-mode', ?, 'done', '[]', NULL, ?, '', '')",
+        )
+        .bind(user)
+        .bind(run)
+        .bind(goal)
+        .bind(reviews)
+        .execute(pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO agent_steps (session_id, user_id, agent, kind, text, path, run_id, created_at) VALUES ('s', ?, 'I-mode', 'note', ?, NULL, ?, '')")
+            .bind(user)
+            .bind(format!("step of {goal}"))
+            .bind(run)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn memory_serves_accepted_work_and_never_flagged_or_sent_back_work() {
+        let pool = ledger_pool(&["alice", "bob"]).await;
+        add_run(&pool, "bob", "r1", "refund ledger accepted", r#"[{"reviewer_id":"alice","verdict":"accepted"}]"#).await;
+        add_run(&pool, "bob", "r2", "refund ledger unreviewed", "[]").await;
+        add_run(&pool, "bob", "r3", "refund ledger sent back", r#"[{"reviewer_id":"alice","verdict":"changes","note":"wrong rounding"}]"#).await;
+        add_run(&pool, "bob", "r4", "refund ledger flagged", r#"[{"reviewer_id":"alice","verdict":"accepted"}]"#).await;
+        sqlx::query("INSERT INTO agent_steps (session_id, user_id, agent, kind, text, path, run_id, created_at) VALUES ('s', 'bob', 'Agent', 'note', 'refund ledger loose claim', NULL, NULL, '')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        flag(&pool, "s", "alice", "run:bob:r4", Some("it rounds refunds down")).await.unwrap();
+
+        let texts: Vec<(String, &str)> = search(&pool, None, "s", "refund ledger", 20).await.into_iter().map(|hit| (hit.text, hit.source)).collect();
+        let has = |needle: &str| texts.iter().any(|(text, _)| text.contains(needle));
+        assert!(has("refund ledger accepted") && has("step of refund ledger accepted"), "{texts:?}");
+        assert!(!has("unreviewed") && !has("sent back") && !has("flagged"), "{texts:?}");
+        let (_, source) = texts.iter().find(|(text, _)| text.starts_with("refund ledger accepted")).unwrap();
+        assert_eq!(*source, "agent work a teammate accepted");
+        let (_, source) = texts.iter().find(|(text, _)| text.contains("loose claim")).unwrap();
+        assert_eq!(*source, "an agent said, unchecked");
+
+        // Flag the loose step by its key, as the app does: it's withdrawn.
+        flag(&pool, "s", "alice", &format!("step:bob:{}", text_key("refund ledger loose claim")), None).await.unwrap();
+        assert!(!search(&pool, None, "s", "refund ledger", 20).await.iter().any(|hit| hit.text.contains("loose claim")));
+        // Lifting the flag on the run brings it back.
+        unflag(&pool, "s", "run:bob:r4").await;
+        assert!(search(&pool, None, "s", "refund ledger", 20).await.iter().any(|hit| hit.text.contains("flagged")));
+    }
+
+    #[tokio::test]
+    async fn alone_your_own_runs_count() {
+        let pool = ledger_pool(&["alice"]).await;
+        add_run(&pool, "alice", "r1", "invoice numbering solo", "[]").await;
+        let hits = search(&pool, None, "s", "invoice numbering", 5).await;
+        assert!(hits.iter().any(|hit| hit.text.starts_with("invoice numbering solo") && hit.source == "an agent said, unchecked"));
+    }
+
+    #[tokio::test]
+    async fn a_replaced_decision_stops_being_served_but_is_kept() {
+        let pool = ledger_pool(&["alice", "bob"]).await;
+        let old = pin(&pool, "s", "alice", "Late fees are 25 cents per day", None).await.unwrap();
+        let new = pin(&pool, "s", "bob", "Late fees are 50 cents per day", Some(old)).await.unwrap();
+        let live = decisions(&pool, "s").await;
+        assert_eq!(live.iter().map(|d| d.id).collect::<Vec<_>>(), vec![new]);
+        let (removed, superseded_by): (i64, Option<i64>) =
+            sqlx::query_as("SELECT removed, superseded_by FROM decisions WHERE id = ?").bind(old).fetch_one(&pool).await.unwrap();
+        assert_eq!((removed, superseded_by), (1, Some(new)));
+        assert!(!search(&pool, None, "s", "late fees", 5).await.iter().any(|hit| hit.text.contains("25 cents")));
+        assert_eq!(pin(&pool, "s", "bob", "again", Some(old)).await.unwrap_err(), "the decision you're replacing was already unpinned or replaced");
     }
 
     #[test]

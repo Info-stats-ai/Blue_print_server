@@ -238,34 +238,70 @@ pub async fn refresh_digest(state: &AppState, session_id: &str) -> Result<(), St
         if content.is_empty() {
             return Err("the model returned an empty summary".to_string());
         }
-        if state
-            .hub
-            .set_digest(session_id, content.clone(), new_through_id)
-            .await
-        {
-            sqlx::query(
-                "INSERT INTO session_digests (session_id, content, through_id) VALUES (?, ?, ?) \
-                 ON CONFLICT(session_id) DO UPDATE SET content = excluded.content, \
-                 through_id = excluded.through_id, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
-            )
-            .bind(session_id)
-            .bind(&content)
-            .bind(new_through_id)
-            .execute(&state.pool)
-            .await
-            .map_err(|error| error.to_string())?;
-            state
-                .hub
-                .broadcast(
-                    session_id,
-                    &json!({"type": "digest_update", "content": content, "through_id": new_through_id}),
-                )
-                .await;
-        }
+        save_digest(state, session_id, content, new_through_id).await?;
         if !batch_was_full {
             return Ok(());
         }
     }
+}
+
+/// Stores and announces a new summary, unless a newer one already landed.
+async fn save_digest(state: &AppState, session_id: &str, content: String, through_id: i64) -> Result<bool, String> {
+    if !state.hub.set_digest(session_id, content.clone(), through_id).await {
+        return Ok(false);
+    }
+    sqlx::query(
+        "INSERT INTO session_digests (session_id, content, through_id) VALUES (?, ?, ?) \
+         ON CONFLICT(session_id) DO UPDATE SET content = excluded.content, \
+         through_id = excluded.through_id, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+    )
+    .bind(session_id)
+    .bind(&content)
+    .bind(through_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|error| error.to_string())?;
+    state
+        .hub
+        .broadcast(session_id, &json!({"type": "digest_update", "content": content, "through_id": through_id}))
+        .await;
+    Ok(true)
+}
+
+/// The request that rewrites a summary someone flagged as wrong.
+fn correction_request(digest: &str, note: &str) -> String {
+    let note = note.trim();
+    let note = if note.is_empty() { "(they didn't say what; drop anything not clearly supported)" } else { note };
+    format!(
+        "Current summary:\n{digest}\n\nA teammate flagged this summary as wrong. Their correction: {note}\n\n\
+         Return the whole summary again with the correction applied: remove or fix whatever it contradicts, and \
+         add nothing beyond the summary and the correction."
+    )
+}
+
+/// Rewrites the summary with a teammate's correction, then lifts the flag.
+/// Until then clients keep the flagged summary away from their agents, so
+/// if this fails (no AI budget left) the wrong summary stays withheld.
+pub async fn correct_digest(state: &AppState, session_id: &str, note: &str) -> Result<(), String> {
+    let (digest, through_id) = state.hub.get_digest(session_id).await;
+    if !digest.is_empty() {
+        if !state.hub.ai_budget.has_room(session_id) {
+            return Err("today's limit on the shared AI key is reached".to_string());
+        }
+        let model = std::env::var("AGENT_DIGEST_MODEL").unwrap_or_else(|_| agent::model_or_fallback());
+        let request = vec![json!({"role": "user", "content": correction_request(&digest, note)})];
+        let (content, cost) = agent::call_model(&state.http_client, &model, DIGEST_SYSTEM_PROMPT, request).await?;
+        state.hub.record_llm_call(session_id, cost).await;
+        let content = content.trim().to_string();
+        if content.is_empty() {
+            return Err("the model returned an empty summary".to_string());
+        }
+        save_digest(state, session_id, content, through_id).await?;
+    }
+    crate::memory::unflag(&state.pool, session_id, "digest").await;
+    let flags = crate::memory::flags(&state.pool, session_id).await;
+    state.hub.broadcast(session_id, &json!({"type": "context_flags", "flags": flags})).await;
+    Ok(())
 }
 
 fn format_transcript(messages: &[ChatMessage], names: &HashMap<String, String>, max_chars: usize) -> String {
@@ -651,6 +687,14 @@ pub async fn update_task_status(state: &AppState, session_id: &str, user_id: &st
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_flagged_summary_is_rewritten_with_the_correction_only() {
+        let request = correction_request("## Decisions\n- Fees are 25c", "Fees are 50c since Tuesday");
+        assert!(request.contains("## Decisions\n- Fees are 25c") && request.contains("Their correction: Fees are 50c since Tuesday"));
+        assert!(request.contains("add nothing beyond the summary and the correction"));
+        assert!(correction_request("x", "  ").contains("drop anything not clearly supported"));
+    }
 
     fn names() -> HashMap<String, String> {
         HashMap::from([

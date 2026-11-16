@@ -186,7 +186,14 @@ async def main():
     hits = call("GET", f"/sessions/{session}/memory?q=how%20much%20are%20late%20fines", token=bob["token"])
     check("Memory search finds the decision first", hits and hits[0]["kind"] == "decision", hits)
     hits = call("GET", f"/sessions/{session}/memory?q=due%20date%20tasks", token=bob["token"])
-    check("Memory search finds the remembered run", any(hit["kind"] == "run" and "due date" in hit["text"].lower() for hit in hits), hits)
+    # Bob sent run-1 back above, so memory must not serve it to agents...
+    check("Memory doesn't serve a run that was sent back", not any(hit["kind"] == "run" for hit in hits), hits)
+    # ...until a teammate accepts it.
+    await again.send({"type": "agent_run_review", "user_id": alice["user_id"], "run_id": "run-1", "verdict": "accepted"})
+    await again.wait(lambda m: m.get("type") == "agent_run" and m["run"]["reviews"][0]["verdict"] == "accepted")
+    hits = call("GET", f"/sessions/{session}/memory?q=due%20date%20tasks", token=bob["token"])
+    check("Memory search finds the remembered run once it's accepted",
+          any(hit["kind"] == "run" and "due date" in hit["text"].lower() and hit["source"] == "agent work a teammate accepted" for hit in hits), hits)
     late = Peer("bob4", bob["token"], session)
     snapshot = await late.connect()
     check("Decisions come in the snapshot", [d["text"][:9] for d in snapshot.get("decisions", [])] == ["Fines are"], snapshot.get("decisions"))
