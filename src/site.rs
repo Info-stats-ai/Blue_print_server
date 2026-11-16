@@ -67,6 +67,7 @@ const DOC_OVERVIEW: &str = include_str!("../site/docs/overview.html");
 
 const DOC_IMAGES: &[(&str, &[u8])] = &[
     ("window.jpg", include_bytes!("../site/docs-img/window.jpg")),
+    ("home.jpg", include_bytes!("../site/docs-img/home.jpg")),
     ("people-menu.jpg", include_bytes!("../site/docs-img/people-menu.jpg")),
     ("join-request.jpg", include_bytes!("../site/docs-img/join-request.jpg")),
     ("team-chat.jpg", include_bytes!("../site/docs-img/team-chat.jpg")),
