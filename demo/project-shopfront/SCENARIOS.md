@@ -117,3 +117,36 @@ the top of the chat turns I-mode on at any time.
 Expected: asked **Solo or I-mode**. **I-mode** opens the team panel ready to
 start a session; **Solo** leaves it a normal editor; closing the question
 changes nothing.
+
+## I. Build one big feature end to end, in modules
+
+Gift cards: sold as a product, kept as a balance, spent at checkout, shown in
+reports. The work is split so each person's AI owns one module and nobody
+edits another person's files.
+
+1. Alice (Plan mode): "Plan gift cards for Shopfront. A new module
+   `shop/giftcards.py` holds cards and balances. Checkout can spend a card
+   before charging the bank card. Reports show gift card sales. Split it
+   between Alice (checkout in `shop/store.py` and `shop/orders.py`), Bob
+   (delivery: a gift card has no weight and needs no stock) and Carol (the
+   `giftcards` module, payments and reports). Tests for every part."
+2. Alice shares the plan with the team.
+
+Expected: the plan names a module and an owner for every step; after
+**Share with team**, all three see the same tasks under Team activity, each
+with its owner.
+
+3. Each person asks their own AI (Agent mode) to do their tasks, all three at
+   the same time.
+
+Expected:
+- Each AI stays in its own files; anyone whose code is about to be touched
+  sees **Changes on the way** first.
+- Nobody receives a half-finished file or a failing test from someone else.
+- If one AI changes something another person's code calls, that person is
+  told and their tests run on their own.
+- At the end the three copies are identical and `python3 -m unittest` passes
+  in each, including the new gift card tests.
+
+Measure: time from the first request to all tests passing on all three
+screens, and the tokens each AI used.
