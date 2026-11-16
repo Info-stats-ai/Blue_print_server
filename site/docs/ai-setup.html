@@ -1,28 +1,26 @@
 <article data-page="/docs/ai-setup" data-group="Work with AI" data-title="Set up your AI">
 <h1>Set up your AI</h1>
-<p class="lede">I-IDE uses AI models from providers you choose, with your own API key. Set this up once, and both the I-mode panel and the Agent Panel can use it.</p>
+<p class="lede">I-IDE uses Claude, with your own API key. You can add an OpenAI key too. Set this up once, and both the I-mode panel and the Agent Panel can use it.</p>
 <h2>Add an API key</h2>
 <ol>
-  <li>Get an API key from your provider, such as Anthropic.</li>
+  <li>Get a Claude API key from Anthropic (or an OpenAI key).</li>
   <li>Open the Agent Panel with <kbd>Cmd</kbd>+<kbd>?</kbd>, then open its settings.</li>
-  <li>Find your provider and paste your key.</li>
+  <li>Under <strong>Anthropic</strong> (or <strong>OpenAI</strong>), paste your key.</li>
 </ol>
 <p>Your key is saved on your computer and used to call the provider directly.</p>
 <div class="callout important"><strong>Important</strong><p>Your provider bills you for this usage. Check their pricing before running long agent tasks.</p></div>
 <h2>Choose a model</h2>
 <ol>
   <li>At the bottom of the I-mode panel, select the model name.</li>
-  <li>Choose a model. The list shows every model your providers offer.</li>
+  <li>Choose a model. The list shows the Claude models your key can use, and OpenAI's if you added that key.</li>
 </ol>
-<p>If no model is set up, the panel tells you to pick one or add a provider key.</p>
-<h2>Use a local model</h2>
-<p>If you run Ollama on your computer, its models appear in the same list.</p>
+<p>With a Claude key, I-IDE picks the strongest Claude model for you until you choose one. Without a key, the model name reads <strong>Add a Claude key</strong>, and nothing else is picked for you.</p>
 <h2>Set a default in settings</h2>
 <pre><code>{
   "agent": {
     "default_model": {
       "provider": "anthropic",
-      "model": "claude-sonnet-4-6"
+      "model": "claude-sonnet-5-5"
     }
   }
 }</code></pre>

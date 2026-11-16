@@ -310,6 +310,10 @@ footer { border-top: 1px solid var(--line); padding-block: 24px 40px; font-size:
 .points { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 40px; }
 .point { display: grid; gap: 8px; align-content: start; padding: 22px; background: #0b0d0f; border: 1px solid var(--line); border-radius: 12px; }
 .points.three { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 72px; }
+.points.two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 40px; }
+.points:last-child { margin-bottom: 0; }
+.h-lede { max-width: 34em; font-size: 1.1875rem; }
+.metrics.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .points.four { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 72px; }
 .point small { font-family: var(--mono, ui-monospace, monospace); font-size: .75rem; letter-spacing: .04em; text-transform: uppercase; color: #8fd0ff; }
 .point b { font-weight: 500; font-size: 1.0625rem; line-height: 1.3; }
@@ -341,3 +345,12 @@ footer { border-top: 1px solid var(--line); padding-block: 24px 40px; font-size:
 .try-note.ok { color: #99f6e4; }
 .try-note.bad { color: #fca5a5; }
 @media (max-width: 800px) { .try-body { grid-template-columns: minmax(0, 1fr); } .try-pane { min-height: 0; } }
+
+/* Front page, simplified: the two-way choice and the three plain numbers. */
+.home .point small { color: var(--accent); }
+@media (max-width: 1000px) {
+  .metrics.three { grid-template-columns: minmax(0, 1fr); }
+  .metrics.three .metric { border-left: 0; }
+  .metrics.three .metric:nth-child(n+2) { border-top: 1px solid var(--line); }
+}
+@media (max-width: 560px) { .points.two { grid-template-columns: minmax(0, 1fr); } }

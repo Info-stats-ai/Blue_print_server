@@ -39,6 +39,8 @@
 <p>Select <strong>Hold on</strong> to ask their AI to stop. Their AI is told, and the file stays unsent until its owner syncs it. Select <strong>X</strong> if the change is fine by you.</p>
 <h2>Tests after changes</h2>
 <p>When you save, when your AI edits a file, and when a teammate's change lands in your copy, I-IDE runs the tests that use what changed, on your machine, and shows the result in Team activity: passed, or failed with the lines that explain why and <strong>Ask AI to fix</strong>. Only those test files run, so it takes seconds. It works with Python (pytest or unittest), Go, and JavaScript or TypeScript with Vitest or Jest. A newer run of the same tests replaces the older result. Switch it off under <strong>AI &amp; sharing…</strong> → <strong>When code changes</strong>.</p>
+<h2>Discussion summary</h2>
+<p>When a session's chat gets long, an AI keeps a short summary of it: the goal, the decisions, who's doing what and the open questions. It's marked <strong>written by AI</strong>, and every AI is told it can be wrong and that pinned decisions and the code come first. If it gets something wrong, select the warning triangle and say what. Nobody's AI is given the summary until it has been rewritten with your correction. See <a href="/docs/agent-runs#flag-as-wrong">Flag something as wrong</a>.</p>
 <h2>Versions, without git</h2>
 <p>Every version of a file that reaches the team is kept, with who made it and when. Select the clock on a file to list them. <strong>View</strong> opens the file with what changed since that version marked. <strong>Restore</strong> puts that version back; it then counts as your newest change.</p>
 <p>Git keeps working as usual if your project uses it. See <a href="/docs/git">Git</a>.</p>

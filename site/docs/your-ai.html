@@ -43,9 +43,19 @@
   <tr><td>Tests after changes</td><td>Which tests ran after a change (yours, your other AI's or a teammate's), and what failed.</td></tr>
 </tbody></table>
 <p><strong>Team code memory.</strong> I-IDE keeps an index of every function and type in the project: the team's synced code, yours, and the signatures of teammates' work that isn't sent yet. When you ask your AI for something, the closest existing code is added to your request, and your AI can search the index itself with its <strong>find_code</strong> tool. It reuses what exists instead of writing a second copy. The index is built on your machine and kept current as files are saved and arrive, so a search is instant and costs no AI tokens.</p>
-<p><strong>Team memory.</strong> Before your AI answers, I-IDE searches the session's pinned decisions, task board, team chat and the agent runs people chose to keep, and adds the closest matches to your request. This is retrieval-augmented generation (RAG), and there's nothing to set up. Keys and passwords are masked before anything is stored.</p>
+<p><strong>Team memory.</strong> Before your AI answers, I-IDE searches the session's pinned decisions, task board, team chat and the agent runs a teammate accepted, and adds the closest matches to your request. There's nothing to set up. Keys and passwords are masked before anything is stored.</p>
+<p id="sources"><strong>Where each part came from.</strong> Not everything your AI is told is equally reliable, so every part carries a label:</p>
+<table><thead><tr><th>Label</th><th>What it means to your AI</th></tr></thead><tbody>
+  <tr><td>From code</td><td>Read from the code itself: changes, function definitions, test results. Reliable.</td></tr>
+  <tr><td>Decided by people</td><td>A person pinned it, asked for it or flagged it. Your AI follows it.</td></tr>
+  <tr><td>Said in chat</td><td>What people said. Useful background, not a rule unless it's pinned.</td></tr>
+  <tr><td>Agent said, unchecked</td><td>What another AI said or did. A hint: your AI checks it against the code before relying on it.</td></tr>
+  <tr><td>AI summary</td><td>An AI-written summary. It can be wrong; pinned decisions and the code win.</td></tr>
+</tbody></table>
+<p>Anything a teammate <a href="/docs/agent-runs#flag-as-wrong">flagged as wrong</a> is left out.</p>
 <p><strong>See it and change it.</strong> Select the people icon, then <strong>AI &amp; sharing…</strong>. Under <strong>Your AIs' live update includes</strong>, switch any part off. <strong>Show what your AIs see right now</strong> prints the exact text they're given.</p>
 <p>To pin a decision, point at a message in chat and select the pin. It appears under <strong>Decisions</strong> in <a href="/docs/team-tab">Team activity</a> for everyone.</p>
+<p id="replace-a-decision"><strong>When a decision changes.</strong> If the one you're pinning looks like it changes one already pinned, I-IDE shows you the old one and asks: <strong>Replace it</strong>, <strong>Keep both</strong> or <strong>Cancel</strong>. A replaced decision stops being given to AIs, so nobody's AI keeps following the old call.</p>
 <h2 id="editor-use">Editor use</h2>
 <p>Your AI uses the editor the way you do, through its language intelligence rather than by reading text and guessing. It's exact, takes milliseconds and costs no extra AI calls.</p>
 <table><thead><tr><th>Tool</th><th>What your AI can do</th></tr></thead><tbody>

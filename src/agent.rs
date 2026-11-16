@@ -857,8 +857,8 @@ fn estimate_cost_usd(model: &str, input_tokens: u64, output_tokens: u64) -> f64 
 }
 
 /// Calls the configured model. `AGENT_OPENAI_BASE_URL` points the server at
-/// any OpenAI-compatible endpoint instead of Anthropic (a local Ollama for
-/// development, say); otherwise the Anthropic API is used.
+/// any OpenAI-compatible endpoint instead of Anthropic; otherwise the
+/// Anthropic API (Claude) is used.
 pub(crate) async fn call_model(
     client: &reqwest::Client,
     model: &str,

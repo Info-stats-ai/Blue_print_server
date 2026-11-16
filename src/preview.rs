@@ -234,8 +234,7 @@ pub async fn open(State(state): State<AppState>, Path(params): Path<HashMap<Stri
 /// preview cookie, if there is one.
 pub async fn fallback(State(state): State<AppState>, request: Request) -> Response {
     let Some(token) = cookie_token(request.headers()) else {
-        let range = request.headers().get(header::RANGE).and_then(|range| range.to_str().ok());
-        return crate::site::page_with_range(request.uri().path(), range);
+        return crate::site::page(request.uri().path());
     };
     let path = request
         .uri()
