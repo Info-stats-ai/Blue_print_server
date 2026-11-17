@@ -49,10 +49,18 @@ cat >"$HOME_DIR/data/config/settings.json" <<'JSON'
   "agent": { "default_model": { "provider": "anthropic", "model": "claude-sonnet-5-5" } }
 }
 JSON
-open -n "$APP" \
+# Same program as the others, its own hidden app ID (see start-demo.sh).
+COPY="$HOME/i-ide/target/demo/I.$NAME.app"
+rm -rf "$COPY"; mkdir -p "$COPY/Contents/MacOS"
+cp -R "$APP/Contents/Resources" "$COPY/Contents/"
+cp "$APP/Contents/Info.plist" "$COPY/Contents/Info.plist"
+ln "$APP/Contents/MacOS/i-ide" "$COPY/Contents/MacOS/i-ide" 2>/dev/null || cp "$APP/Contents/MacOS/i-ide" "$COPY/Contents/MacOS/i-ide"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier dev.iide.I.$NAME" "$COPY/Contents/Info.plist"
+codesign --force --sign - "$COPY" >/dev/null 2>&1 || true
+open -n "$COPY" \
   --env BLUEPRINT_HTTP_URL="$BASE" --env BLUEPRINT_SERVER_URL="ws://127.0.0.1:$PORT/ws" \
   --env BLUEPRINT_DEV_TOKEN="$TOKEN_NEW" --env BLUEPRINT_DEV_USER_ID="$USER_ID" \
   --env I_IDE_API_URL="$BASE/api" --env ZED_STATELESS=1 \
   --stdout "$HOME_DIR/ide.log" --stderr "$HOME_DIR/ide.log" \
   --args --user-data-dir "$HOME_DIR/data" "$PROJECT_DIR" "i-ide://i-mode/join/$SESSION.$INVITE"
-echo "$NAME joined the demo in $APP, with a copy of the project at $PROJECT_DIR"
+echo "$NAME joined the demo in $COPY, with a copy of the project at $PROJECT_DIR"

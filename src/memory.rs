@@ -357,8 +357,12 @@ async fn corpus(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<Item> {
             });
         }
     }
+    // Who said it, by name (the part of their email before the @), not by
+    // account id: an AI reading memory should see "alice", not a UUID.
     let chat: Vec<(i64, String, String, String)> = sqlx::query_as(
-        "SELECT id, sender, text, created_at FROM chat_messages WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+        "SELECT chat_messages.id, COALESCE(users.email, chat_messages.sender), chat_messages.text, chat_messages.created_at \
+         FROM chat_messages LEFT JOIN users ON users.id = chat_messages.sender \
+         WHERE chat_messages.session_id = ? ORDER BY chat_messages.id DESC LIMIT ?",
     )
     .bind(session_id)
     .bind(CHAT_CORPUS_LIMIT)
@@ -366,6 +370,7 @@ async fn corpus(pool: &sqlx::SqlitePool, session_id: &str) -> Vec<Item> {
     .await
     .unwrap_or_default();
     for (id, sender, text, at) in chat {
+        let sender = sender.split('@').next().unwrap_or(&sender).to_string();
         if text.chars().count() >= MIN_CHAT_CHARS {
             let text: String = text.chars().take(1_500).collect();
             let source = if sender == crate::ws::AGENT_USER_ID { "an agent said, unchecked" } else { "said in chat" };
@@ -756,6 +761,24 @@ mod tests {
         // Lifting the flag on the run brings it back.
         unflag(&pool, "s", "run:bob:r4").await;
         assert!(search(&pool, None, "s", "refund ledger", 20).await.iter().any(|hit| hit.text.contains("flagged")));
+    }
+
+    #[tokio::test]
+    async fn chat_in_memory_says_who_by_name() {
+        let pool = ledger_pool(&["alice", "bob"]).await;
+        // Real accounts have random ids, unlike the names above.
+        sqlx::query("INSERT INTO users (id, email, password_hash, created_at) VALUES ('527272bc-2fdf', 'dana@example.test', '', '')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO chat_messages (session_id, sender, text, created_at) VALUES ('s', '527272bc-2fdf', 'We agreed returns are accepted within 30 days of delivery', '')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let hits = search(&pool, None, "s", "returns accepted days", 5).await;
+        let chat = hits.iter().find(|hit| hit.kind == "chat").expect("the chat message is found");
+        assert!(chat.text.starts_with("dana: "), "a name, not an account id: {}", chat.text);
+        assert_eq!(chat.source, "said in chat");
     }
 
     #[tokio::test]
