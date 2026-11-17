@@ -6,6 +6,9 @@
 #   DEMO_PEOPLE="alice bob carol dave" DEMO_PROJECT=project-bookshelf ./start-demo.sh
 #
 # Defaults: two people (alice, bob) and the tiny project-template.
+#
+# DEMO_APP=~/i-ide/target/tester/dmg/I.app opens every person in that one
+# real I app (one window each) instead of a separate "I – Name" app per person.
 set -euo pipefail
 
 DEMO="$(cd "$(dirname "$0")" && pwd)"
@@ -20,7 +23,8 @@ PROJECT="${DEMO_PROJECT:-project-template}"
 [ -d "$DEMO/$PROJECT" ] || { echo "No project folder: $DEMO/$PROJECT"; exit 1; }
 BASE="http://127.0.0.1:$PORT"
 
-[ -x "$IDE" ] || { echo "IDE not built: $IDE"; exit 1; }
+[ -x "$IDE" ] || [ -n "${DEMO_APP:-}" ] || { echo "IDE not built: $IDE"; exit 1; }
+[ -z "${DEMO_APP:-}" ] || [ -d "$DEMO_APP" ] || { echo "No app at $DEMO_APP"; exit 1; }
 [ -x "$SERVER" ] || { echo "Server not built: $SERVER"; exit 1; }
 
 "$DEMO/stop-demo.sh" >/dev/null 2>&1 || true
@@ -128,7 +132,7 @@ launch() {
   local label
   label="$(printf '%s' "${name:0:1}" | tr '[:lower:]' '[:upper:]')${name:1}"
   local APP
-  APP=$(make_app "$name" "$label")
+  if [ -n "${DEMO_APP:-}" ]; then APP="$DEMO_APP"; else APP=$(make_app "$name" "$label"); fi
   mkdir -p "$home/data/config"
   local project_dir="$home/$(basename "$PROJECT" | sed 's/^project-//')"
   cp -R "$DEMO/$PROJECT" "$project_dir"
