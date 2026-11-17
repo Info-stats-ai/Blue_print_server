@@ -67,7 +67,12 @@
 </tbody></table>
 <p>Where a file has no language server, finding references and definitions fall back to a text search and the code index, and your AI is told which it got. Plan mode can look but not rename.</p>
 <h2>Approve commands</h2>
-<p>When your agent wants to run a command, a card shows you the command. Select <strong>Run</strong> to allow it or <strong>Deny</strong> to refuse it.</p>
+<p>Commands that only read run without asking: <code>ls</code>, <code>cat</code>, <code>grep</code>, <code>head</code>, <code>tail</code>, <code>wc</code>, <code>find</code> (without <code>-exec</code> or <code>-delete</code>) and Git commands that only look, such as <code>git status</code>, <code>git log</code> and <code>git diff</code>. Anything else, such as a command that writes or deletes files, installs something or runs your code, shows you a card first. Select <strong>Run</strong> to allow it or <strong>Deny</strong> to refuse it. <strong>Always run</strong> lets commands that start the same way, such as <code>python3 -m unittest</code>, run without asking until you close the window.</p>
+<h2 id="sandbox">The sandbox</h2>
+<p>Your AI's commands run in a sandbox, under the same settings as the Agent panel's terminal (<strong>Settings</strong> → <strong>AI</strong>). A command can write only inside your project, and your project's <code>.git</code> folder stays read-only. Network access follows the same settings. If the sandbox can't start, the command doesn't run.</p>
+<h2 id="project-rules">Project rules (AGENTS.md)</h2>
+<p>If your project has a rules file, your AI follows it: the first of <code>.rules</code>, <code>.cursorrules</code>, <code>AGENTS.md</code>, <code>CLAUDE.md</code> and similar that has anything in it, the same file the Agent panel reads. In a team session it syncs like any other file, so everyone's AI follows the same rules.</p>
+<div class="callout"><strong>Note</strong><p>A rules file is for standing rules people write. It isn't how I-IDE shares what the team is doing: that comes live, labelled by where it came from, and anything wrong can be flagged so no AI uses it. See <a href="#sources">Where each piece of context comes from</a>.</p></div>
 <div class="callout tip"><strong>Tip</strong><p>Read each command before you approve it, especially anything that deletes files or changes your Git history.</p></div>
 <h2>Stop your AI</h2>
 <p>While your AI is working, the send button turns into a red <strong>Stop</strong> button. Select it to halt the AI at any time.</p>
