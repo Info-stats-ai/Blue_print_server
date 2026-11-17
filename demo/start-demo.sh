@@ -7,6 +7,9 @@
 #
 # Defaults: two people (alice, bob) and the tiny project-template.
 #
+# DEMO_FOLDERS="carol=my-shop" puts that person's copy of the project in a
+# differently named folder, as on a real teammate's computer.
+#
 # DEMO_APP=~/i-ide/target/tester/dmg/I.app opens every person in that real I
 # app, one window each: named "I", with its icon. Each person's copy differs
 # only in a hidden app ID (dev.iide.I.<name>), so automation can tell the
@@ -150,7 +153,9 @@ launch() {
   local APP
   if [ -n "${DEMO_APP:-}" ]; then APP=$(copy_real_app "$name"); else APP=$(make_app "$name" "$label"); fi
   mkdir -p "$home/data/config"
-  local project_dir="$home/$(basename "$PROJECT" | sed 's/^project-//')"
+  local folder
+  folder=$(printf '%s\n' ${DEMO_FOLDERS:-} | sed -n "s/^$name=//p" | head -1)
+  local project_dir="$home/${folder:-$(basename "$PROJECT" | sed 's/^project-//')}"
   cp -R "$DEMO/$PROJECT" "$project_dir"
   # A git repo, like a real project, so the IDE shows changes.
   (cd "$project_dir" && git init -q && git add -A && git -c user.name=demo -c user.email=demo@example.test commit -qm "Start" ) >/dev/null 2>&1 || true

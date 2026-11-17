@@ -2,7 +2,10 @@
 # Adds one more person to the demo that start-demo.sh is running, in a real
 # I app, so someone can watch or take part live (for example as the manager).
 #
-#   ./demo/join-demo.sh you [path/to/I.app]
+#   ./demo/join-demo.sh you [path/to/I.app] [folder-name]
+#
+# folder-name puts their copy of the project in a differently named folder,
+# as happens on a real teammate's computer.
 #
 # The person joins the same session and gets their own copy of the project.
 # Defaults to ~/i-ide/target/tester/dmg/I.app (made by script/package-tester-mac).
@@ -12,6 +15,7 @@ DEMO="$(cd "$(dirname "$0")" && pwd)"
 STATE="$DEMO/.state"
 NAME="${1:?usage: join-demo.sh <name> [path/to/I.app]}"
 APP="${2:-$HOME/i-ide/target/tester/dmg/I.app}"
+FOLDER="${3:-}"
 PORT=3917
 BASE="http://127.0.0.1:$PORT"
 [ -f "$STATE/session_id" ] || { echo "No demo running: start one with start-demo.sh"; exit 1; }
@@ -38,7 +42,7 @@ mkdir -p "$HOME_DIR/data/config"
 # A copy of the lead's project as it is now, so the newcomer starts level.
 LEAD="${LEAD_EMAIL%@*}"
 LEAD_PROJECT=$(find "$STATE/$LEAD" -mindepth 1 -maxdepth 1 -type d ! -name data | head -1)
-PROJECT_DIR="$HOME_DIR/$(basename "$LEAD_PROJECT")"
+PROJECT_DIR="$HOME_DIR/${FOLDER:-$(basename "$LEAD_PROJECT")}"
 if [ ! -d "$PROJECT_DIR" ]; then
   rsync -a --exclude .i-ide --exclude __pycache__ "$LEAD_PROJECT/" "$PROJECT_DIR/"
 fi
