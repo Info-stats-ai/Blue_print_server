@@ -24,6 +24,11 @@ const DIGEST_BATCH_MESSAGES: i64 = 25;
 const DIGEST_MAX_NEW_MESSAGES: i64 = 300;
 const DIGEST_MAX_MESSAGE_CHARS: usize = 1_500;
 const PLANNER_RECENT_MESSAGES: i64 = 60;
+/// A shared plan is one long message, and tasks are made from it: it has to
+/// reach the planner whole. Ordinary messages are far shorter than this.
+const PLANNER_MAX_MESSAGE_CHARS: usize = 16_000;
+/// The most the recent messages may add up to; the oldest go first.
+const PLANNER_MAX_TRANSCRIPT_CHARS: usize = 60_000;
 const PLANNER_MAX_FILES: usize = 300;
 const PLANNER_MAX_BLUEPRINT_CHARS: usize = 6_000;
 const PLANNER_ATTEMPTS: usize = 3;
@@ -304,6 +309,19 @@ pub async fn correct_digest(state: &AppState, session_id: &str, note: &str) -> R
     Ok(())
 }
 
+/// The recent messages for the planner: each kept long enough to hold a whole
+/// plan, and the oldest dropped if together they'd be too much to read.
+fn planner_transcript(messages: &[ChatMessage], names: &HashMap<String, String>) -> String {
+    let mut first = 0;
+    loop {
+        let transcript = format_transcript(&messages[first..], names, PLANNER_MAX_MESSAGE_CHARS);
+        if transcript.chars().count() <= PLANNER_MAX_TRANSCRIPT_CHARS || first + 1 >= messages.len() {
+            return transcript;
+        }
+        first += 1;
+    }
+}
+
 fn format_transcript(messages: &[ChatMessage], names: &HashMap<String, String>, max_chars: usize) -> String {
     let name_of = |user_id: &str| names.get(user_id).cloned().unwrap_or_else(|| user_id.to_string());
     messages
@@ -475,7 +493,7 @@ async fn assign_tasks(state: &AppState, session_id: &str, requested_by: &str) ->
          Current tasks (keep finished work finished; replace the rest):\n{previous_tasks}",
         goal = if goal.is_empty() { "(not set)" } else { goal.as_str() },
         digest = if digest.is_empty() { "(none yet)" } else { digest.as_str() },
-        recent = format_transcript(&recent, &names, DIGEST_MAX_MESSAGE_CHARS),
+        recent = planner_transcript(&recent, &names),
         files = if files.is_empty() { "(none shared yet)".to_string() } else { files.join("\n") },
         more = if more_files { "\n… (more)" } else { "" },
         blueprint = if blueprint.is_empty() { "(none)" } else { blueprint.as_str() },
@@ -787,6 +805,33 @@ mod tests {
         let owners = board.file_owners();
         assert_eq!(owners.len(), 1);
         assert_eq!(owners.get("a.rs").map(String::as_str), Some("u-bob"));
+    }
+
+    #[test]
+    fn a_long_shared_plan_reaches_the_planner_whole() {
+        // A real plan runs to several thousand characters; the digest's
+        // 1,500-character limit used to cut it off after a few steps.
+        let plan: String = (1..=12).map(|step| format!("{step}. Carol: build part {step} of gift cards, with tests. {}\n", "detail ".repeat(100))).collect();
+        assert!(plan.chars().count() > 4 * DIGEST_MAX_MESSAGE_CHARS);
+        let messages = vec![
+            ChatMessage { id: 1, sender: "u-alice".to_string(), text: "hi team".to_string(), author: None },
+            ChatMessage { id: 2, sender: "u-alice".to_string(), text: plan.clone(), author: None },
+        ];
+        let transcript = planner_transcript(&messages, &names());
+        assert!(transcript.contains("12. Carol: build part 12"), "the last step is there");
+        assert!(!transcript.contains('…'), "nothing was cut");
+    }
+
+    #[test]
+    fn the_planner_drops_the_oldest_messages_before_cutting_the_newest() {
+        let long = "word ".repeat(3_000); // 15,000 characters each
+        let messages: Vec<ChatMessage> = (1..=8)
+            .map(|id| ChatMessage { id, sender: "u-alice".to_string(), text: format!("message {id} {long}"), author: None })
+            .collect();
+        let transcript = planner_transcript(&messages, &names());
+        assert!(transcript.chars().count() <= PLANNER_MAX_TRANSCRIPT_CHARS);
+        assert!(transcript.contains("message 8 "), "the newest is kept");
+        assert!(!transcript.contains("message 1 "), "the oldest went first");
     }
 
     #[test]

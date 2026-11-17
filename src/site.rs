@@ -25,6 +25,7 @@ const DOCS: &str = include_str!("../site/docs.html");
 const SIGNIN: &str = include_str!("../site/signin.html");
 
 const DOC_PAGES: &[(&str, &str)] = &[
+    ("why-i", include_str!("../site/docs/why-i.html")),
     ("getting-started", include_str!("../site/docs/getting-started.html")),
     ("installation", include_str!("../site/docs/installation.html")),
     ("interface", include_str!("../site/docs/interface.html")),
