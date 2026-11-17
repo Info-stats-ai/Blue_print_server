@@ -31,7 +31,7 @@
 <p>In a session, your AI is given a short <strong>live update</strong> before each step, so it works from what the team has decided and built instead of guessing.</p>
 <table><thead><tr><th>Part</th><th>What it tells your AI</th></tr></thead><tbody>
   <tr><td>Pinned decisions</td><td>Calls the team pinned in chat. Your AI follows them.</td></tr>
-  <tr><td>Latest team chat</td><td>The most recent messages.</td></tr>
+  <tr><td>Latest team chat</td><td>The most recent messages. Your AI knows they're people talking to each other or to their own AI, so it doesn't answer them unless you ask.</td></tr>
   <tr><td>Files teammates sent</td><td>Which files arrived in your copy, what changed and what they define.</td></tr>
   <tr><td>Teammates' agents</td><td>What each teammate's agent is working on right now.</td></tr>
   <tr><td>Code others are editing</td><td>Functions a teammate or their agent holds, so yours stays out of them, and when they're free again.</td></tr>
@@ -48,7 +48,7 @@
 <table><thead><tr><th>Label</th><th>What it means to your AI</th></tr></thead><tbody>
   <tr><td>From code</td><td>Read from the code itself: changes, function definitions, test results. Reliable.</td></tr>
   <tr><td>Decided by people</td><td>A person pinned it, asked for it or flagged it. Your AI follows it.</td></tr>
-  <tr><td>Said in chat</td><td>What people said. Useful background, not a rule unless it's pinned.</td></tr>
+  <tr><td>Said in chat</td><td>What people said. Useful background, not a rule unless it's pinned, and never a request to your AI.</td></tr>
   <tr><td>Agent said, unchecked</td><td>What another AI said or did. A hint: your AI checks it against the code before relying on it.</td></tr>
   <tr><td>AI summary</td><td>An AI-written summary. It can be wrong; pinned decisions and the code win.</td></tr>
 </tbody></table>
@@ -66,6 +66,13 @@
   <tr><td>Show code</td><td>Opens a file at a line and selects it in your editor, so you see what it means.</td></tr>
 </tbody></table>
 <p>Where a file has no language server, finding references and definitions fall back to a text search and the code index, and your AI is told which it got. Plan mode can look but not rename.</p>
+<h2 id="check-a-page">Check a page in a browser</h2>
+<p>In Agent mode your AI can open a page your project serves on your own computer, click and type on it, and look at a screenshot of the result. Use it to have your AI see what it built, for example: "Open http://localhost:8000/, click Add to cart twice and check the cart. If it's wrong, fix it and check again."</p>
+<ul>
+  <li>It works only with pages on your computer (<code>localhost</code>), never other websites.</li>
+  <li>It uses Google Chrome or Chromium, one of which must be installed. The browser runs hidden and closes when the check ends.</li>
+  <li>Each check is limited to 20 steps and 45 seconds.</li>
+</ul>
 <h2>Approve commands</h2>
 <p>Commands that only read run without asking: <code>ls</code>, <code>cat</code>, <code>grep</code>, <code>head</code>, <code>tail</code>, <code>wc</code>, <code>find</code> (without <code>-exec</code> or <code>-delete</code>) and Git commands that only look, such as <code>git status</code>, <code>git log</code> and <code>git diff</code>. Anything else, such as a command that writes or deletes files, installs something or runs your code, shows you a card first. Select <strong>Run</strong> to allow it or <strong>Deny</strong> to refuse it. <strong>Always run</strong> lets commands that start the same way, such as <code>python3 -m unittest</code>, run without asking until you close the window.</p>
 <h2 id="sandbox">The sandbox</h2>
