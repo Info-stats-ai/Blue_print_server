@@ -7,8 +7,10 @@
 #
 # Defaults: two people (alice, bob) and the tiny project-template.
 #
-# DEMO_APP=~/i-ide/target/tester/dmg/I.app opens every person in that one
-# real I app (one window each) instead of a separate "I – Name" app per person.
+# DEMO_APP=~/i-ide/target/tester/dmg/I.app opens every person in that real I
+# app, one window each: named "I", with its icon. Each person's copy differs
+# only in a hidden app ID (dev.iide.I.<name>), so automation can tell the
+# windows apart; the program itself is the same file, hard-linked.
 set -euo pipefail
 
 DEMO="$(cd "$(dirname "$0")" && pwd)"
@@ -126,13 +128,27 @@ PLIST
 }
 rm -rf "$HOME/i-ide/target/demo/IIdeDev.app"
 
+# The real I app for one person: same program, same name and icon.
+copy_real_app() {
+  local name=$1
+  local app="$HOME/i-ide/target/demo/I.$name.app"
+  rm -rf "$app"
+  mkdir -p "$app/Contents/MacOS"
+  cp -R "$DEMO_APP/Contents/Resources" "$app/Contents/"
+  cp "$DEMO_APP/Contents/Info.plist" "$app/Contents/Info.plist"
+  ln "$DEMO_APP/Contents/MacOS/i-ide" "$app/Contents/MacOS/i-ide" 2>/dev/null || cp "$DEMO_APP/Contents/MacOS/i-ide" "$app/Contents/MacOS/i-ide"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier dev.iide.I.$name" "$app/Contents/Info.plist"
+  codesign --force --sign - "$app" >/dev/null 2>&1 || true
+  echo "$app"
+}
+
 launch() {
   local name=$1 token=$2 user_id=$3
   local home="$STATE/$name"
   local label
   label="$(printf '%s' "${name:0:1}" | tr '[:lower:]' '[:upper:]')${name:1}"
   local APP
-  if [ -n "${DEMO_APP:-}" ]; then APP="$DEMO_APP"; else APP=$(make_app "$name" "$label"); fi
+  if [ -n "${DEMO_APP:-}" ]; then APP=$(copy_real_app "$name"); else APP=$(make_app "$name" "$label"); fi
   mkdir -p "$home/data/config"
   local project_dir="$home/$(basename "$PROJECT" | sed 's/^project-//')"
   cp -R "$DEMO/$PROJECT" "$project_dir"

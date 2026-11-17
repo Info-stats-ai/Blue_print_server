@@ -2101,6 +2101,12 @@ pub(crate) async fn member_display_names(state: &AppState, session_id: &str) -> 
         .collect()
 }
 
+/// How long an app has to answer the server's ping before it's dropped. A
+/// laptop that is busy, or that macOS has slowed while the app is in the
+/// background, can take several seconds; dropping it then would force a
+/// reconnect in the middle of someone's work.
+const PONG_DEADLINE: Duration = Duration::from_secs(30);
+
 async fn handle_socket(
     mut socket: WebSocket,
     state: AppState,
@@ -2302,7 +2308,7 @@ async fn handle_socket(
                     break;
                 }
                 awaiting_pong = true;
-                pong_deadline = Box::pin(tokio::time::sleep(Duration::from_secs(10)));
+                pong_deadline = Box::pin(tokio::time::sleep(PONG_DEADLINE));
             }
             _ = &mut pong_deadline, if awaiting_pong => {
                 break;
