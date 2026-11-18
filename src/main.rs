@@ -1,5 +1,6 @@
 mod agent;
 mod auth;
+mod catchup;
 mod checkpoint;
 mod client_ip;
 mod crdt;
@@ -19,6 +20,7 @@ mod patch;
 mod preview;
 mod site;
 mod stats;
+mod store;
 mod symbols;
 mod team;
 mod ws;
@@ -114,11 +116,24 @@ async fn main() {
 
     state.hub.set_event_sink(stats::spawn_writer(state.pool.clone()));
     state.hub.ai_budget.restore(&state.pool).await;
-    if let Ok(pruned) = history::prune_blobs(&state.pool).await
-        && pruned > 0
-    {
-        println!("history: removed {pruned} unused file version(s)");
+    match store::init_master_key(&state.pool, &database_url).await {
+        Ok(source) => println!("store: master key {source}"),
+        Err(error) => {
+            eprintln!("store: can't set up the master key: {error}");
+            std::process::exit(1);
+        }
     }
+    match history::move_to_chunk_store(&state.pool).await {
+        Ok(0) => {}
+        Ok(moved) => println!("history: moved {moved} version(s) into the encrypted chunk store"),
+        Err(error) => eprintln!("history: moving versions into the chunk store failed: {error}"),
+    }
+    match history::move_snapshots_to_chunk_store(&state.pool).await {
+        Ok(0) => {}
+        Ok(moved) => println!("history: moved {moved} plan/checkpoint snapshot(s) into the encrypted chunk store"),
+        Err(error) => eprintln!("history: moving snapshots into the chunk store failed: {error}"),
+    }
+    store::spawn_collector(state.pool.clone());
 
     let bundled = extensions::load_bundled(&state.pool, std::env::var("EXTENSIONS_DIR").ok().as_deref()).await;
     if bundled > 0 {
@@ -199,8 +214,12 @@ async fn main() {
         .route("/sessions/{id}/invite", post(handlers::invite_to_session))
         .route("/sessions/{id}/join-requests/{user_id}", put(handlers::answer_join_request))
         .route("/sessions/{id}/memory", get(memory::search_handler))
-        .route("/sessions/{id}/history", get(history::list_handler))
-        .route("/sessions/{id}/history/{version}", get(history::version_handler))
+        .route("/sessions/{id}/history", get(history::list_handler).delete(history::delete_many_handler))
+        .route("/sessions/{id}/history/usage", get(history::usage_handler))
+        .route(
+            "/sessions/{id}/history/{version}",
+            get(history::version_handler).delete(history::delete_version_handler),
+        )
         .route(
             "/contracts",
             post(handlers::create_contract).get(handlers::list_contracts),

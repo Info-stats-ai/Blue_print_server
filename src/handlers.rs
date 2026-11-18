@@ -570,8 +570,12 @@ pub async fn create_plan(
     // actual code state instead of a note about it. `files` being a plain
     // JSON column (not a new table per file) keeps a snapshot atomic: one
     // row read back is the whole state, nothing to join or go stale.
-    let files = serde_json::to_string(&state.hub.get_all_files(&payload.session_id).await)
-        .unwrap_or_else(|_| "{}".to_string());
+    // Kept as chunk lists in the encrypted store, not a plain copy.
+    let files = {
+        let mut conn = state.pool.acquire().await?;
+        crate::history::snapshot_save(&mut conn, &payload.session_id, &state.hub.get_all_files(&payload.session_id).await)
+            .await?
+    };
 
     sqlx::query(
         "INSERT INTO execution_plans (id, session_id, author_id, content, status, files, created_at, updated_at) \
@@ -785,13 +789,15 @@ pub async fn restore_plan(
 
     require_session_owner(&state, &plan.session_id, &user_id).await?;
 
-    let files: HashMap<String, String> = plan
-        .files
-        .as_deref()
-        .map(serde_json::from_str)
-        .transpose()
-        .map_err(|error| AppError::Internal(format!("corrupt plan snapshot: {error}")))?
-        .unwrap_or_default();
+    let files: HashMap<String, String> = match plan.files.as_deref() {
+        Some(json) => {
+            let mut conn = state.pool.acquire().await?;
+            crate::history::snapshot_load(&mut conn, &plan.session_id, json)
+                .await
+                .map_err(|error| AppError::Internal(format!("couldn't read the plan's snapshot: {error}")))?
+        }
+        None => HashMap::new(),
+    };
 
     for (path, content) in &files {
         state.hub.restore_file(&plan.session_id, path.clone(), content.clone()).await;

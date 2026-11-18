@@ -2026,7 +2026,7 @@ pub struct WsQuery {
 }
 
 /// What this server can handle, sent in the snapshot so clients know.
-const SERVER_FEATURES: &[&str] = &["file_patch", "branches", "context_safeguards"];
+const SERVER_FEATURES: &[&str] = &["file_patch", "branches", "context_safeguards", "catch_up", "zstd_frames"];
 
 /// The lane a connection on `branch` syncs in, given the session's main
 /// branch.
@@ -2072,10 +2072,15 @@ pub async fn ws_handler(
         .features
         .as_deref()
         .is_some_and(|features| features.split(',').any(|feature| feature.trim() == "file_patch"));
+    // The client reads (and may send) zstd-compressed binary frames.
+    let compressed = params
+        .features
+        .as_deref()
+        .is_some_and(|features| features.split(',').any(|feature| feature.trim() == "zstd_frames"));
     Ok(ws
         .max_message_size(crate::guard::MAX_WS_MESSAGE_BYTES)
         .max_frame_size(crate::guard::MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| handle_socket(socket, state, session_id, user_id, patches, params.branch)))
+        .on_upgrade(move |socket| handle_socket(socket, state, session_id, user_id, patches, compressed, params.branch)))
 }
 
 /// A readable name for every member of the session, keyed by user id. Users
@@ -2113,6 +2118,7 @@ async fn handle_socket(
     session_id: String,
     user_id: String,
     patches: bool,
+    compressed: bool,
     branch: Option<String>,
 ) {
     let mut connection = state.hub.add_peer(&session_id, &user_id).await;
@@ -2271,7 +2277,7 @@ async fn handle_socket(
     });
 
     if socket
-        .send(Message::Text(snapshot.to_string().into()))
+        .send(crate::catchup::frame(snapshot.to_string(), compressed))
         .await
         .is_err()
     {
@@ -2318,7 +2324,16 @@ async fn handle_socket(
                     Some(Ok(Message::Pong(_))) => { awaiting_pong = false; }
                     Some(Ok(Message::Text(text))) => {
                         if let Some(reply) = handle_client_message(&state, &session_id, &user_id, connection.id, text.as_str()).await
-                            && socket.send(Message::Text(reply.to_string().into())).await.is_err() {
+                            && socket.send(crate::catchup::frame(reply.to_string(), compressed)).await.is_err() {
+                                break;
+                        }
+                    }
+                    Some(Ok(Message::Binary(bytes))) if compressed => {
+                        let Some(text) = crate::catchup::unframe(&bytes) else {
+                            break;
+                        };
+                        if let Some(reply) = handle_client_message(&state, &session_id, &user_id, connection.id, &text).await
+                            && socket.send(crate::catchup::frame(reply.to_string(), compressed)).await.is_err() {
                                 break;
                         }
                     }
@@ -2341,6 +2356,12 @@ async fn handle_socket(
                 match outgoing {
                     Some(msg) => {
                         connection.pending.fetch_sub(1, Ordering::Relaxed);
+                        let msg = match msg {
+                            Message::Text(text) if compressed && text.len() > crate::catchup::COMPRESS_OVER => {
+                                crate::catchup::frame(text.to_string(), true)
+                            }
+                            other => other,
+                        };
                         if socket.send(msg).await.is_err() {
                             break;
                         }
@@ -2433,6 +2454,17 @@ fn files_for_catch_up(files: HashMap<String, String>) -> (Vec<serde_json::Value>
     (included, truncated)
 }
 
+/// The most files one catch-up request may ask for.
+const MAX_FETCH_FILES: usize = 500;
+
+#[derive(Debug, Deserialize)]
+struct CatchUpWant {
+    path: String,
+    // The client's chunks of its copy, in order, by `catchup::chunk_name`.
+    #[serde(default)]
+    have: Vec<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ClientMessage {
@@ -2447,6 +2479,16 @@ enum ClientMessage {
     // Someone joining (or rejoining) catches up on the files the team
     // synced while they weren't connected.
     FilesRequest,
+    // The same, sending only what differs: `root` fingerprints the files the
+    // client already knows (see `catchup`).
+    CatchUpRequest {
+        #[serde(default)]
+        root: Option<String>,
+    },
+    // The files that differ, each with the chunks the client already has.
+    CatchUpFetch {
+        files: Vec<CatchUpWant>,
+    },
     // A model reply generated on one client (with that user's own key),
     // relayed so the whole session sees one conversation.
     AiReply { label: String, text: String },
@@ -2981,6 +3023,34 @@ async fn handle_client_message(
                 }
             }
         }
+        ClientMessage::CatchUpRequest { root } => {
+            let lane = state.hub.lane(session_id, connection_id).await;
+            let entries = crate::catchup::manifest(&state.hub.files_in(session_id, &lane).await);
+            let server_root = crate::catchup::root(entries.iter().map(|entry| (entry.path.as_str(), entry.hash.as_str())));
+            if root.as_deref() == Some(server_root.as_str()) {
+                return Some(json!({"type": "catch_up_manifest", "up_to_date": true, "root": server_root, "files": []}));
+            }
+            Some(json!({"type": "catch_up_manifest", "up_to_date": false, "root": server_root, "files": entries}))
+        }
+        ClientMessage::CatchUpFetch { files } => {
+            let lane = state.hub.lane(session_id, connection_id).await;
+            let current = state.hub.files_in(session_id, &lane).await;
+            let mut sent = Vec::new();
+            for want in files.into_iter().take(MAX_FETCH_FILES) {
+                let Some(content) = current.get(&want.path) else {
+                    continue;
+                };
+                if crate::guard::file_refusal(&want.path, content).is_some() {
+                    continue;
+                }
+                sent.push(json!({
+                    "path": want.path,
+                    "hash": crate::patch::content_hash(content),
+                    "parts": crate::catchup::recipe(content, &want.have),
+                }));
+            }
+            Some(json!({"type": "catch_up_files", "files": sent}))
+        }
         ClientMessage::FilesRequest => {
             let lane = state.hub.lane(session_id, connection_id).await;
             let (files, truncated) = files_for_catch_up(state.hub.files_in(session_id, &lane).await);
@@ -3407,13 +3477,19 @@ async fn rehydrate_session_from_checkpoint(state: &AppState, session_id: &str) {
     let Some((content, files_json)) = row else {
         return;
     };
-    let files: HashMap<String, String> = match files_json.as_deref().map(serde_json::from_str) {
-        Some(Ok(files)) => files,
-        Some(Err(error)) => {
-            eprintln!("ws: corrupt checkpoint snapshot for session {session_id}: {error}");
+    let Some(files_json) = files_json else {
+        return;
+    };
+    let loaded = match state.pool.acquire().await {
+        Ok(mut conn) => crate::history::snapshot_load(&mut conn, session_id, &files_json).await,
+        Err(error) => Err(error),
+    };
+    let files: HashMap<String, String> = match loaded {
+        Ok(files) => files,
+        Err(error) => {
+            eprintln!("ws: couldn't read the checkpoint of session {session_id}: {error}");
             return;
         }
-        None => return,
     };
     if files.is_empty() {
         return;

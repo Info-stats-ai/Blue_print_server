@@ -19,10 +19,9 @@ use crate::AppState;
 
 const CHECKPOINT_INTERVAL: Duration = Duration::from_secs(300);
 
-// Each checkpoint is a full copy of every file in the session, so keeping
-// them all grows the database without bound (a shared codebase is easily
-// megabytes per copy, every five minutes) until the volume is full and every
-// query stalls. Restoring only ever reads the newest one.
+// A checkpoint is the session's files as chunk lists (the chunks are shared
+// with the version history, so each costs little), but restoring only ever
+// reads the newest one, so older ones are dropped.
 const CHECKPOINTS_KEPT_PER_SESSION: i64 = 3;
 
 // Caps how many checkpoint writes are in flight at once. Bounded, not
@@ -139,7 +138,10 @@ async fn write_checkpoint(
     }
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
-    let files_json = serde_json::to_string(files)?;
+    let files_json = {
+        let mut conn = state.pool.acquire().await?;
+        crate::history::snapshot_save(&mut conn, session_id, files).await?
+    };
     // The blueprint rides in `content` — the same column a human-authored
     // plan uses for its free-text description — distinguished from those by
     // `status = 'checkpoint'`, which `ws::rehydrate_session_from_checkpoint`
