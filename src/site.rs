@@ -330,11 +330,24 @@ pub async fn join_waitlist(
     if !looks_like_email(&email) {
         return Err(AppError::BadRequest("enter a valid email address".into()));
     }
-    sqlx::query("INSERT OR IGNORE INTO waitlist (email, created_at) VALUES (?, ?)")
+    let joined = sqlx::query("INSERT OR IGNORE INTO waitlist (email, created_at) VALUES (?, ?)")
         .bind(&email)
         .bind(Utc::now())
         .execute(&state.pool)
-        .await?;
+        .await?
+        .rows_affected()
+        > 0;
+    // The owner hears about each new signup; the person signing up never
+    // waits on the email, and a repeat signup sends nothing.
+    if joined {
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM waitlist").fetch_one(&state.pool).await.unwrap_or(0);
+        let client = state.http_client.clone();
+        tokio::spawn(async move {
+            if let Err(error) = crate::email::notify_waitlist_signup(&client, &email, total).await {
+                eprintln!("waitlist: couldn't send the signup notice: {error:#}");
+            }
+        });
+    }
     Ok(Json(OkResponse { ok: true }))
 }
 

@@ -64,3 +64,32 @@ pub async fn send_invite(
     }
     Ok(())
 }
+
+/// Tells the site's owner that `signup` joined the waitlist (`total` people
+/// so far). Sent to `WAITLIST_NOTIFY_EMAIL`; skipped quietly when that isn't
+/// set, and an error when it is but sending isn't set up.
+pub async fn notify_waitlist_signup(client: &reqwest::Client, signup: &str, total: i64) -> anyhow::Result<()> {
+    let Some(to) = std::env::var("WAITLIST_NOTIFY_EMAIL").ok().filter(|to| !to.trim().is_empty()) else {
+        return Ok(());
+    };
+    let api_key = std::env::var("RESEND_API_KEY").context("RESEND_API_KEY is not set")?;
+    let from = std::env::var("INVITE_FROM_EMAIL").context("INVITE_FROM_EMAIL is not set")?;
+    let response = client
+        .post("https://api.resend.com/emails")
+        .bearer_auth(api_key)
+        .json(&json!({
+            "from": from,
+            "to": [to.trim()],
+            "reply_to": signup,
+            "subject": format!("New waitlist signup: {signup}"),
+            "text": format!("{signup} joined the I waitlist.\n\nThat's {total} {} so far. Reply to this email to write to them.\n", if total == 1 { "person" } else { "people" }),
+        }))
+        .send()
+        .await
+        .context("failed to reach the email provider")?;
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("email provider rejected the waitlist notice: {body}");
+    }
+    Ok(())
+}
