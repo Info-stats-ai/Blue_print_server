@@ -1,13 +1,6 @@
 <article data-page="/docs/ai-setup" data-group="Work with AI" data-title="Set up your AI">
 <h1>Set up your AI</h1>
-<p class="lede">I-IDE uses Claude, with your own API key. No key? Sign in with GitHub Copilot for free. Set this up once, and both the I-mode panel and the Agent Panel can use it.</p>
-<h2>Free: sign in with GitHub Copilot</h2>
-<ol>
-  <li>Open the Agent Panel with <kbd>Cmd</kbd>+<kbd>?</kbd>, then open its settings.</li>
-  <li>Under <strong>GitHub Copilot Chat</strong>, select <strong>Sign in</strong>.</li>
-  <li>Copy the code shown, open the GitHub page, paste the code and approve.</li>
-</ol>
-<p>Any GitHub account works. Copilot Free has a monthly limit; a paid Copilot plan raises it.</p>
+<p class="lede">I-IDE uses Claude, with your own API key. You can add an OpenAI key too. Set this up once, and both the I-mode panel and the Agent Panel can use it.</p>
 <h2>Add an API key</h2>
 <ol>
   <li>Get a Claude API key from Anthropic (or an OpenAI key).</li>
@@ -19,9 +12,9 @@
 <h2>Choose a model</h2>
 <ol>
   <li>At the bottom of the I-mode panel, select the model name.</li>
-  <li>Choose a model. The list shows the models your key or Copilot sign-in can use.</li>
+  <li>Choose a model. The list shows the Claude models your key can use, and OpenAI's if you added that key.</li>
 </ol>
-<p>Until you choose one, I-IDE picks for you: the strongest Claude model on your own key, or else a Claude model from Copilot. With neither, the model name reads <strong>Choose an AI</strong>.</p>
+<p>With a Claude key, I-IDE picks the strongest Claude model for you until you choose one. Without a key, the model name reads <strong>Add a Claude key</strong>, and nothing else is picked for you.</p>
 <h2>Set a default in settings</h2>
 <pre><code>{
   "agent": {
