@@ -23,6 +23,18 @@
 
 <h2>Go back to an earlier version</h2>
 <p>Every version that reaches the team is kept, with who made it and when. In <strong>Files</strong>, select the clock on a file, then <strong>View</strong> or <strong>Restore</strong>. A restored version becomes your newest change. Git keeps working as usual if your project uses it.</p>
+<p>The top of the list shows what the session's history takes up, for example "1,300 versions · 17.6 MB stored, encrypted · 14× smaller than the text". Versions share the parts of a file that didn't change, so keeping many costs little.</p>
+
+<h2>Delete versions</h2>
+<ul>
+  <li><strong>One version:</strong> select the bin on its row. You can delete versions you made; the session's leader can delete any.</li>
+  <li><strong>Older versions of a file</strong> (leader only): select <strong>Delete older versions</strong> to keep only the newest.</li>
+  <li><strong>All history</strong> (leader only): select <strong>Delete all history…</strong>. Every kept version and saved snapshot is removed for everyone, and the key that encrypted them is destroyed, so they can't be recovered from backups either.</li>
+</ul>
+<p>Deleting history never changes anyone's files or the live session.</p>
+
+<h2>Joining or reconnecting</h2>
+<p>When you join a session, or come back after being offline, only what you're missing is sent. If nothing changed, one quick check confirms it. If a file changed, only the changed parts travel, and each file is checked before it's written, so you never get a wrong copy. Large transfers are compressed.</p>
 
 <h2>What your AIs learn</h2>
 <p>When a teammate's file reaches you, your AIs are told who sent it, what changed and what it defines, so they use the real code instead of guessing. A version still waiting for your review is readable by them too, without touching your copy.</p>

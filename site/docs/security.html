@@ -9,6 +9,21 @@
   <tr><td>Files in solo mode</td><td>Not shared with a team. What your AI reads goes to its provider.</td></tr>
   <tr><td>Usage data and crash reports</td><td>Not sent. Telemetry is off by default.</td></tr>
 </tbody></table>
+<h2>How synced code is stored</h2>
+<ul>
+  <li>File versions, plans and snapshots are stored <strong>encrypted</strong>. Each session has its own key (XChaCha20-Poly1305), and session keys are themselves encrypted with the server's master key.</li>
+  <li>Stored pieces of files are named by a fingerprint keyed to the session, so the stored data doesn't show whether two sessions hold the same code.</li>
+  <li>Every version is checked when it's read back. A damaged or tampered piece is reported, never returned as a file.</li>
+  <li>The session's leader can delete versions, or all of a session's history. Deleting all history destroys the session's key, so the data can't be read from backups either.</li>
+  <li>While a session is live, the server works with its files in memory to sync them and power team features.</li>
+</ul>
+<h2>On your computer</h2>
+<ul>
+  <li>Your Agent Panel conversations are stored encrypted with a key unique to your Mac, kept in the macOS Keychain.</li>
+  <li>Team history isn't stored on your computer; it stays on the server.</li>
+  <li>I-IDE's logs are readable only by your user account and don't contain file contents.</li>
+  <li>Your project files are ordinary files, so other tools can use them. Turn on FileVault to encrypt your disk; I-IDE tells you once if it's off.</li>
+</ul>
 <h2>Who can join a session</h2>
 <p>A person needs both the secret invite link and the owner's approval. See <a href="/docs/invites">Invites and approvals</a>.</p>
 <h2>Signing in</h2>
