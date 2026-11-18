@@ -67,10 +67,13 @@
 </tbody></table>
 <p>Where a file has no language server, finding references and definitions fall back to a text search and the code index, and your AI is told which it got. Plan mode can look but not rename.</p>
 <h2 id="check-a-page">Check a page in a browser</h2>
-<p>In Agent mode your AI can open a page your project serves on your own computer, click and type on it, and look at a screenshot of the result. Use it to have your AI see what it built, for example: "Open http://localhost:8000/, click Add to cart twice and check the cart. If it's wrong, fix it and check again."</p>
+<p>In Agent mode your AI can open a web page, click and type on it, and look at a screenshot of the result. Use it to have your AI see what it built, for example: "Open http://localhost:8000/, click Add to cart twice and check the cart. If it's wrong, fix it and check again."</p>
 <ul>
-  <li>It works only with pages on your computer (<code>localhost</code>), never other websites.</li>
-  <li>It uses Google Chrome or Chromium, one of which must be installed. The browser runs hidden and closes when the check ends.</li>
+  <li>Pages on your computer (<code>localhost</code>) open right away.</li>
+  <li>Any other website shows you a card first. Select <strong>Open once</strong>, <strong>Always allow this site</strong> (until you close the window) or <strong>Don't open</strong>.</li>
+  <li>A check stays on the site it opened. If the page tries to go to another site, it's stopped.</li>
+  <li>The browser is private: no saved logins or cookies. It runs hidden and closes when the check ends.</li>
+  <li>It needs Google Chrome, Chromium, Microsoft Edge or Brave installed.</li>
   <li>Each check is limited to 20 steps and 45 seconds.</li>
 </ul>
 <h2>Approve commands</h2>
