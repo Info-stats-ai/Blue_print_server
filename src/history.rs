@@ -97,7 +97,9 @@ pub async fn record(
     user_id: &str,
     origin: Option<&str>,
 ) -> Result<bool, sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    // The write lock from the start: two saves at once otherwise both read,
+    // then one fails to upgrade ("database is locked") instead of waiting.
+    let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
     let hash = store::content_id(&mut tx, session_id, content).await?;
     let newest: Option<(String, Option<Vec<u8>>)> = sqlx::query_as(
         "SELECT hash, chunks FROM file_versions WHERE session_id = ? AND path = ? AND branch = ? ORDER BY id DESC LIMIT 1",
@@ -184,7 +186,7 @@ pub async fn move_to_chunk_store(pool: &sqlx::SqlitePool) -> Result<u64, sqlx::E
             break;
         }
         for (id, session_id, hash) in rows {
-            let mut tx = pool.begin().await?;
+            let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
             let content: Option<String> =
                 sqlx::query_scalar("SELECT content FROM file_blobs WHERE hash = ?").bind(&hash).fetch_optional(&mut *tx).await?;
             let Some(content) = content else {
@@ -414,7 +416,7 @@ pub async fn move_snapshots_to_chunk_store(pool: &sqlx::SqlitePool) -> Result<u6
             eprintln!("history: snapshot {id} isn't a file map; left as it is");
             continue;
         };
-        let mut tx = pool.begin().await?;
+        let mut tx = pool.begin_with("BEGIN IMMEDIATE").await?;
         let stored = snapshot_save(&mut tx, &session_id, &files).await?;
         let read_back = snapshot_load(&mut tx, &session_id, &stored).await?;
         let kept: std::collections::HashMap<&String, &String> =
@@ -652,6 +654,25 @@ mod tests {
         for (a, b) in &cases {
             assert_eq!(line_counts(a, b), full(a, b), "{a:?} -> {b:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn saves_at_the_same_moment_all_get_recorded() {
+        // In real-app testing two saves of one file at once failed with
+        // "database is locked" and one version was never kept.
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::init_pool(&format!("sqlite://{}/h.db", dir.path().display())).await.unwrap();
+        let saves = (0..20).map(|n| {
+            let pool = pool.clone();
+            tokio::spawn(async move {
+                let content = format!("def refund_for(order):  # edit {n}\n    return {n}\n");
+                record(&pool, "s", "returns.py", "", &content, None, &format!("u{n}"), None).await
+            })
+        });
+        for save in futures_util::future::join_all(saves).await {
+            assert!(save.unwrap().is_ok(), "no save fails for the lock");
+        }
+        assert_eq!(versions(&pool, "s", Some("returns.py"), "", 50).await.unwrap().len(), 20);
     }
 
     #[tokio::test]

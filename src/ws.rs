@@ -2932,6 +2932,13 @@ async fn handle_client_message(
                 return Some(crate::guard::notice(&reason));
             }
             let lane = state.hub.lane(session_id, connection_id).await;
+            // A starting point (the committed version, sent the first time
+            // someone shares a file) only counts while the team has no copy:
+            // over a teammate's change it would quietly undo it, and the
+            // sender's change built on it would then win without a merge.
+            if origin.as_deref() == Some("share") && state.hub.get_file_in(session_id, &lane, &path).await.is_some() {
+                return None;
+            }
             if let Some(base_hash) = base_hash
                 && let Some(known) = state.hub.get_file_in(session_id, &lane, &path).await
                 && known != content
