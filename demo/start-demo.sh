@@ -38,10 +38,20 @@ mkdir -p "$STATE"
 
 # Run from the server repo so it picks up ANTHROPIC_API_KEY from its .env
 # (for @agent); everything else is local to this demo.
-# @agent runs on the server; give it the Anthropic key your IDE already uses
-# (process env only, never written to disk) so it works even if .env is stale.
+# The server's own .env key comes first: it is the one its owner keeps current.
+# Only when .env has none, fall back to the Anthropic key your IDE already uses
+# (process env only, never written to disk).
 IDE_ANTHROPIC_KEY=""
-if [ -f "$CREDENTIALS" ]; then
+if [ -f "$SERVER_DIR/.env" ]; then
+  IDE_ANTHROPIC_KEY=$(python3 -I -c '
+import sys
+for line in open(sys.argv[1]):
+    name, sep, value = line.strip().partition("=")
+    if sep and name.strip().removeprefix("export ").strip() == "ANTHROPIC_API_KEY":
+        print(value.strip().strip("\"'"'"'"))
+' "$SERVER_DIR/.env" | tail -1)
+fi
+if [ -z "$IDE_ANTHROPIC_KEY" ] && [ -f "$CREDENTIALS" ]; then
   IDE_ANTHROPIC_KEY=$(python3 -I -c '
 import json, sys
 creds = json.load(open(sys.argv[1]))
