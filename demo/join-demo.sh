@@ -53,6 +53,22 @@ cat >"$HOME_DIR/data/config/settings.json" <<'JSON'
   "agent": { "default_model": { "provider": "anthropic", "model": "claude-sonnet-5-5" } }
 }
 JSON
+# The release app reads AI keys from the Keychain, which a demo profile can't
+# see; give this person the server's .env key, as start-demo.sh does for the
+# others (process env only, never written to disk).
+KEY_ENV=()
+SERVER_KEY=""
+if [ -f "$HOME/blueprint-server/.env" ]; then
+  SERVER_KEY=$(python3 -I -c '
+import sys
+for line in open(sys.argv[1]):
+    name, sep, value = line.strip().partition("=")
+    if sep and name.strip().removeprefix("export ").strip() == "ANTHROPIC_API_KEY":
+        print(value.strip().strip("\"'"'"'"))
+' "$HOME/blueprint-server/.env" | tail -1)
+fi
+if [ -n "$SERVER_KEY" ]; then KEY_ENV=(--env ANTHROPIC_API_KEY="$SERVER_KEY"); fi
+unset SERVER_KEY
 # Same program as the others, its own hidden app ID (see start-demo.sh).
 COPY="$HOME/i-ide/target/demo/I.$NAME.app"
 rm -rf "$COPY"; mkdir -p "$COPY/Contents/MacOS"
@@ -64,7 +80,7 @@ codesign --force --sign - "$COPY" >/dev/null 2>&1 || true
 open -n "$COPY" \
   --env BLUEPRINT_HTTP_URL="$BASE" --env BLUEPRINT_SERVER_URL="ws://127.0.0.1:$PORT/ws" \
   --env BLUEPRINT_DEV_TOKEN="$TOKEN_NEW" --env BLUEPRINT_DEV_USER_ID="$USER_ID" \
-  --env I_IDE_API_URL="$BASE/api" --env ZED_STATELESS=1 \
+  --env I_IDE_API_URL="$BASE/api" --env ZED_STATELESS=1 ${KEY_ENV[@]+"${KEY_ENV[@]}"} \
   --stdout "$HOME_DIR/ide.log" --stderr "$HOME_DIR/ide.log" \
   --args --user-data-dir "$HOME_DIR/data" "$PROJECT_DIR" "i-ide://i-mode/join/$SESSION.$INVITE"
 echo "$NAME joined the demo in $COPY, with a copy of the project at $PROJECT_DIR"
