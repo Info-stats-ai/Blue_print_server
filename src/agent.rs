@@ -126,7 +126,7 @@ pub fn describe_anthropic_key() -> String {
     let trimmed = key.trim().trim_matches(|character| character == '"' || character == '\'').trim();
     let kind = if trimmed.is_empty() {
         "set but empty"
-    } else if trimmed.starts_with("sk-ant-api") {
+    } else if trimmed.starts_with("sk-ant-api") || trimmed.starts_with("sk-ant-usr") {
         "API key"
     } else if trimmed.starts_with("sk-ant-oat") {
         "Claude OAuth token, which the API rejects; create an API key at console.anthropic.com"
