@@ -935,13 +935,30 @@ async fn call_openai_compatible(
         .await
         .map_err(|error| format!("invalid response body: {error}"))?;
     if !status.is_success() {
-        return Err(format!("API returned {status}"));
+        eprintln!("agent: model API returned {status}");
+        return Err(plain_api_error(status.as_u16(), None));
     }
     let text = value["choices"][0]["message"]["content"]
         .as_str()
         .ok_or_else(|| "unexpected response shape".to_string())?
         .to_string();
     Ok((text, 0.0))
+}
+
+/// What a failed model call means, in words for the people in a session
+/// rather than HTTP codes ("401 invalid x-api-key").
+fn plain_api_error(status: u16, reason: Option<&str>) -> String {
+    let reason = reason.unwrap_or("").to_ascii_lowercase();
+    match status {
+        _ if reason.contains("credit balance") => {
+            "the AI account is out of credit; the server's owner needs to top it up".to_string()
+        }
+        401 | 403 => "the server's AI key was refused; its owner needs to replace it".to_string(),
+        429 => "the AI is getting too many requests; try again in a minute".to_string(),
+        503 | 529 => "the AI service is busy right now; try again in a minute".to_string(),
+        500..=599 => "the AI service had a problem; try again in a minute".to_string(),
+        _ => format!("the AI couldn't take this request (error {status})"),
+    }
 }
 
 /// Returns the reply text plus an estimated USD cost for the call (see
@@ -956,13 +973,13 @@ async fn call_anthropic(
     // Dashboards make it easy to paste a key with quotes or a trailing
     // newline, which the API rejects as unauthorized.
     let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| "ANTHROPIC_API_KEY is not set".to_string())?
+        .map_err(|_| "the server has no AI key set up yet".to_string())?
         .trim()
         .trim_matches(|character| character == '"' || character == '\'')
         .trim()
         .to_string();
     if api_key.is_empty() {
-        return Err("ANTHROPIC_API_KEY is set but empty on this server".to_string());
+        return Err("the server has no AI key set up yet".to_string());
     }
 
     let body = json!({
@@ -995,10 +1012,13 @@ async fn call_anthropic(
         let reason = serde_json::from_str::<serde_json::Value>(&raw_body)
             .ok()
             .and_then(|body| body["error"]["message"].as_str().map(str::to_string));
-        return Err(match reason {
-            Some(reason) => format!("API returned {status}: {reason}"),
-            None => format!("API returned {status}"),
-        });
+        // The full detail goes to the server log for whoever runs it; people
+        // in the session see what it means in plain words.
+        eprintln!(
+            "agent: Anthropic API returned {status}: {}",
+            reason.as_deref().unwrap_or("(no reason given)")
+        );
+        return Err(plain_api_error(status.as_u16(), reason.as_deref()));
     }
 
     let value: serde_json::Value = serde_json::from_str(&raw_body)
@@ -1037,6 +1057,17 @@ async fn call_anthropic(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn model_errors_are_put_in_plain_words() {
+        let refused = super::plain_api_error(401, Some("invalid x-api-key"));
+        assert!(refused.contains("AI key was refused"), "{refused}");
+        assert!(!refused.contains("x-api-key") && !refused.contains("401"), "{refused}");
+        assert!(super::plain_api_error(400, Some("Your credit balance is too low")).contains("out of credit"));
+        assert!(super::plain_api_error(529, None).contains("busy"));
+        assert!(super::plain_api_error(429, None).contains("try again"));
+        assert!(super::plain_api_error(404, None).contains("error 404"));
+    }
+
     use super::*;
 
     #[test]

@@ -398,14 +398,10 @@ pub async fn request_assignment(state: &AppState, session_id: &str, user_id: &st
         loop {
             last_error = match assign_tasks(&state, &session_id, &user_id).await {
                 Ok(()) => None,
+                // Everyone sees why in the Tasks panel (task_planning's
+                // error); repeating it in the team chat only adds noise.
                 Err(error) => {
                     eprintln!("team: assignment failed in session {session_id}: {error}");
-                    agent::broadcast_agent_reply(
-                        &state,
-                        &session_id,
-                        format!("(couldn't build a task plan: {error})"),
-                    )
-                    .await;
                     Some(error)
                 }
             };
@@ -445,7 +441,7 @@ async fn assign_tasks(state: &AppState, session_id: &str, requested_by: &str) ->
     .map_err(|error| error.to_string())?;
     recent.reverse();
     if recent.is_empty() && digest.is_empty() {
-        return Err("there's no discussion to plan from yet".to_string());
+        return Err("there's nothing to plan from yet. Write in the team chat what needs doing, then press Assign tasks".to_string());
     }
 
     let names = ws::member_display_names(state, session_id).await;
