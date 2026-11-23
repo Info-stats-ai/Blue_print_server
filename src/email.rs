@@ -93,3 +93,36 @@ pub async fn notify_waitlist_signup(client: &reqwest::Client, signup: &str, tota
     }
     Ok(())
 }
+
+/// Welcomes `signup` to the waitlist. Sent once per address (the signup
+/// handler only calls it for a new one), from `INVITE_FROM_EMAIL`.
+pub async fn send_waitlist_welcome(client: &reqwest::Client, signup: &str) -> anyhow::Result<()> {
+    let api_key = std::env::var("RESEND_API_KEY").context("RESEND_API_KEY is not set")?;
+    let from = std::env::var("INVITE_FROM_EMAIL").context("INVITE_FROM_EMAIL is not set")?;
+    let site = std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| "https://i-ide.dev".to_string());
+    let mut message = json!({
+        "from": from,
+        "to": [signup],
+        "subject": "You're on the I waitlist",
+        "text": format!(
+            "Thanks for joining the waitlist for I, the code editor where your whole team and every AI work in sync.\n\n\
+             We'll email you as soon as your spot opens up. Until then, you can read how it works at {site}/docs.\n\n\
+             If you didn't sign up, you can ignore this email; you won't hear from us again.\n"
+        ),
+    });
+    if let Some(reply_to) = std::env::var("WAITLIST_NOTIFY_EMAIL").ok().filter(|to| !to.trim().is_empty()) {
+        message["reply_to"] = json!(reply_to.trim());
+    }
+    let response = client
+        .post("https://api.resend.com/emails")
+        .bearer_auth(api_key)
+        .json(&message)
+        .send()
+        .await
+        .context("failed to reach the email provider")?;
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("email provider rejected the welcome email: {body}");
+    }
+    Ok(())
+}

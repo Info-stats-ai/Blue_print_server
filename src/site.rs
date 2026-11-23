@@ -337,12 +337,15 @@ pub async fn join_waitlist(
         .await?
         .rows_affected()
         > 0;
-    // The owner hears about each new signup; the person signing up never
-    // waits on the email, and a repeat signup sends nothing.
+    // A new signup gets a welcome email and the owner a notice; the person
+    // signing up never waits on either, and a repeat signup sends nothing.
     if joined {
         let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM waitlist").fetch_one(&state.pool).await.unwrap_or(0);
         let client = state.http_client.clone();
         tokio::spawn(async move {
+            if let Err(error) = crate::email::send_waitlist_welcome(&client, &email).await {
+                eprintln!("waitlist: couldn't send the welcome email: {error:#}");
+            }
             if let Err(error) = crate::email::notify_waitlist_signup(&client, &email, total).await {
                 eprintln!("waitlist: couldn't send the signup notice: {error:#}");
             }
