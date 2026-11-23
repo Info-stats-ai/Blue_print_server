@@ -161,6 +161,11 @@ fn database_dir(database_url: &str) -> Option<std::path::PathBuf> {
 /// (64 hex characters) is the key. Without it, a key file next to the
 /// database is used, made once; when the variable is set later, every
 /// session key is re-wrapped with it and the file is deleted.
+///
+/// A malformed variable never takes the server down: the key file (or a new
+/// one, when nothing is stored yet) is used and the error is logged. A
+/// well-formed key that can't open the stored session keys is refused, since
+/// running on it would leave the history unreadable.
 pub async fn init_master_key(pool: &sqlx::SqlitePool, database_url: &str) -> anyhow::Result<&'static str> {
     let from_env = std::env::var(MASTER_ENV).ok().filter(|value| !value.trim().is_empty());
     let key_file = database_dir(database_url).map(|dir| dir.join(MASTER_FILE));
@@ -171,19 +176,44 @@ pub async fn init_master_key(pool: &sqlx::SqlitePool, database_url: &str) -> any
         ),
         _ => None,
     };
-    let (key, source) = match (&from_env, file_key) {
-        (Some(value), file_key) => {
-            let key = parse_hex_key(value).ok_or_else(|| anyhow::anyhow!("{MASTER_ENV} must be 64 hex characters"))?;
-            if let (Some(old), Some(path)) = (file_key, &key_file) {
+    let env_key = match from_env.as_deref().map(parse_hex_key) {
+        Some(None) => {
+            eprintln!(
+                "store: ERROR {MASTER_ENV} is set but isn't 64 hex characters (0-9, a-f); ignoring it and using the key file. \
+                 Set it again with the output of `openssl rand -hex 32`."
+            );
+            None
+        }
+        Some(Some(key)) => Some(key),
+        None => None,
+    };
+    let (key, source) = match (env_key, file_key) {
+        (Some(key), Some(old)) => {
+            if old != key {
                 let moved = rewrap_all(pool, &old, &key).await?;
-                std::fs::remove_file(path)?;
-                println!("store: moved {moved} session key(s) to {MASTER_ENV} and removed {}", path.display());
+                println!("store: moved {moved} session key(s) to {MASTER_ENV}");
             }
+            if let Some(path) = &key_file {
+                std::fs::remove_file(path)?;
+                println!("store: removed {}", path.display());
+            }
+            (key, "from FILE_ENCRYPTION_KEY")
+        }
+        (Some(key), None) => {
+            anyhow::ensure!(
+                opens_stored_keys(pool, &key).await?,
+                "{MASTER_ENV} doesn't open the session keys already stored (was it changed?). Put back the key in use, \
+                 or history can't be read"
+            );
             (key, "from FILE_ENCRYPTION_KEY")
         }
         (None, Some(key)) => (key, "from the key file next to the database (set FILE_ENCRYPTION_KEY to move it out)"),
         (None, None) => match &key_file {
             Some(path) => {
+                anyhow::ensure!(
+                    !has_stored_keys(pool).await?,
+                    "session keys are stored but neither {MASTER_ENV} nor the key file is there to open them"
+                );
                 let key = random_key();
                 write_private_file(path, &hex(&key))?;
                 (key, "new key file next to the database (set FILE_ENCRYPTION_KEY to move it out)")
@@ -193,6 +223,18 @@ pub async fn init_master_key(pool: &sqlx::SqlitePool, database_url: &str) -> any
     };
     MASTER.set(key).map_err(|_| anyhow::anyhow!("the master key was already set"))?;
     Ok(source)
+}
+
+async fn has_stored_keys(pool: &sqlx::SqlitePool) -> anyhow::Result<bool> {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM session_keys").fetch_one(pool).await?;
+    Ok(count > 0)
+}
+
+/// Whether `key` opens the session keys already stored (true when there are none).
+async fn opens_stored_keys(pool: &sqlx::SqlitePool, key: &[u8; 32]) -> anyhow::Result<bool> {
+    let stored: Option<(String, Vec<u8>)> =
+        sqlx::query_as("SELECT session_id, wrapped FROM session_keys LIMIT 1").fetch_optional(pool).await?;
+    Ok(stored.is_none_or(|(session_id, wrapped)| unwrap_key(key, &session_id, &wrapped).is_ok()))
 }
 
 fn write_private_file(path: &std::path::Path, text: &str) -> std::io::Result<()> {
@@ -628,6 +670,33 @@ mod tests {
         assert!(get(&mut conn, "s", &stored.chunks, &stored.content_id).await.is_err());
         let (left,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM chunks").fetch_one(&pool).await.unwrap();
         assert_eq!(left, 0);
+    }
+
+    #[tokio::test]
+    async fn only_a_key_that_opens_the_stored_keys_is_accepted() {
+        let pool = pool().await;
+        let right = random_key();
+        assert!(opens_stored_keys(&pool, &right).await.unwrap(), "nothing stored yet: any key will do");
+        assert!(!has_stored_keys(&pool).await.unwrap());
+        sqlx::query("INSERT INTO session_keys (session_id, wrapped, created_at) VALUES ('s', ?, 'now')")
+            .bind(wrap_key(&right, "s", &[1u8; 32]))
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(opens_stored_keys(&pool, &right).await.unwrap());
+        assert!(!opens_stored_keys(&pool, &random_key()).await.unwrap(), "a changed key is caught");
+        assert!(has_stored_keys(&pool).await.unwrap());
+    }
+
+    #[test]
+    fn a_pasted_key_is_read_whatever_the_spacing() {
+        let key = "ab".repeat(32);
+        assert!(parse_hex_key(&key).is_some());
+        assert!(parse_hex_key(&format!("  {key}\n")).is_some(), "a trailing newline from pasting is fine");
+        assert!(parse_hex_key(&key[..63]).is_none(), "too short");
+        assert!(parse_hex_key(&format!("{key}0")).is_none(), "too long");
+        assert!(parse_hex_key(&"•".repeat(64)).is_none(), "masked dots aren't a key");
+        assert!(parse_hex_key(&format!("\"{}\"", &key[..62])).is_none(), "quotes aren't hex");
     }
 
     #[tokio::test]
