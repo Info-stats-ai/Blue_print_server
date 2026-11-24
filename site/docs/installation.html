@@ -8,7 +8,9 @@
   <li>We'll email you when a build is ready for your team.</li>
 </ol>
 <h2>Install a tester build</h2>
-<p>If we invited you to test, we sent you a file named like <code>I-1.26.0-arm64.dmg</code>. It runs on Macs with Apple silicon (M1 or later).</p>
+<p>If we invited you to test, we sent you a file for your computer. Everyone in a session needs the same version, so install the newest one we send.</p>
+<h3>macOS</h3>
+<p>The file is named like <code>I-1.26.0-arm64.dmg</code>. It runs on Macs with Apple silicon (M1 or later), not on older Intel Macs.</p>
 <ol>
   <li>Open the <code>.dmg</code> file and drag <strong>I</strong> into <strong>Applications</strong>.</li>
   <li>Open <strong>I</strong> from Applications. macOS says it can't check the app for malicious software, because tester builds aren't notarized by Apple yet. Select <strong>Done</strong>.</li>
@@ -16,13 +18,29 @@
   <li>Sign in with GitHub or Google when I-IDE asks.</li>
 </ol>
 <p>You only do this once. To update, replace the app in Applications with the new one we send you.</p>
+<p>If there's no <strong>Open Anyway</strong> button, open Terminal, run <code>xattr -dr com.apple.quarantine /Applications/I.app</code>, then open I again.</p>
+<h3>Windows</h3>
+<p>The file is named like <code>I-1.26.0-windows-x64-setup.exe</code>. It runs on 64-bit Windows 10 and 11.</p>
+<ol>
+  <li>Open the setup file. Windows may say it protected your PC, because tester builds aren't signed yet. Select <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+  <li>Follow the installer. It installs for your user and doesn't need admin rights.</li>
+  <li>Open <strong>I</strong> from the Start menu and sign in with GitHub or Google.</li>
+</ol>
+<p>We can also send a <code>.zip</code> instead: unzip it anywhere and open <code>I.exe</code>.</p>
+<h3>Linux</h3>
+<p>The file is named like <code>I-1.26.0-linux-x86_64.tar.gz</code>. It runs on 64-bit Intel and AMD computers with Ubuntu 22.04 or newer, or a similar distribution.</p>
+<ol>
+  <li>Unpack it: <code>tar -xzf I-*-linux-x86_64.tar.gz</code>, then go into the folder it made.</li>
+  <li>Run <code>./install.sh</code>. It installs for your user and doesn't need admin rights.</li>
+  <li>Open <strong>I</strong> from your apps menu, or run <code>i-ide</code>, and sign in with GitHub or Google.</li>
+</ol>
 <h2>Supported systems</h2>
 <table><thead><tr><th>System</th><th>Status</th></tr></thead><tbody>
   <tr><td>macOS, Apple silicon</td><td>Tester builds</td></tr>
-  <tr><td>Linux</td><td>Planned</td></tr>
-  <tr><td>Windows</td><td>Planned</td></tr>
+  <tr><td>Linux, x86_64</td><td>Tester builds</td></tr>
+  <tr><td>Windows, x64</td><td>Tester builds</td></tr>
 </tbody></table>
-<p>The shortcuts in these docs are for macOS.</p>
+<p>The shortcuts in these docs are for macOS. On Windows and Linux, use Ctrl where they say Cmd.</p>
 <h2>What you need to work with a team</h2>
 <ul>
   <li>Everyone needs a current version of I-IDE. Older versions can't join newly created sessions.</li>
