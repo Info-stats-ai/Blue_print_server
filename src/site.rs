@@ -29,30 +29,31 @@ const DOC_PAGES: &[(&str, &str)] = &[
     ("getting-started", include_str!("../site/docs/getting-started.html")),
     ("installation", include_str!("../site/docs/installation.html")),
     ("interface", include_str!("../site/docs/interface.html")),
-    ("tutorial", include_str!("../site/docs/tutorial.html")),
+    ("solo", include_str!("../site/docs/solo.html")),
+    ("ai-setup", include_str!("../site/docs/ai-setup.html")),
+    ("agent-panel", include_str!("../site/docs/agent-panel.html")),
     ("editing", include_str!("../site/docs/editing.html")),
     ("navigation", include_str!("../site/docs/navigation.html")),
     ("terminal-tasks", include_str!("../site/docs/terminal-tasks.html")),
-    ("extensions", include_str!("../site/docs/extensions.html")),
     ("git", include_str!("../site/docs/git.html")),
+    ("extensions", include_str!("../site/docs/extensions.html")),
     ("settings", include_str!("../site/docs/settings.html")),
     ("i-mode", include_str!("../site/docs/i-mode.html")),
-    ("sign-in", include_str!("../site/docs/sign-in.html")),
+    ("tutorial", include_str!("../site/docs/tutorial.html")),
     ("sessions", include_str!("../site/docs/sessions.html")),
     ("invites", include_str!("../site/docs/invites.html")),
     ("chat", include_str!("../site/docs/chat.html")),
+    ("your-ai", include_str!("../site/docs/your-ai.html")),
     ("live-editing", include_str!("../site/docs/live-editing.html")),
     ("tasks", include_str!("../site/docs/tasks.html")),
     ("team-tab", include_str!("../site/docs/team-tab.html")),
-    ("previews", include_str!("../site/docs/previews.html")),
-    ("ai-setup", include_str!("../site/docs/ai-setup.html")),
-    ("your-ai", include_str!("../site/docs/your-ai.html")),
-    ("agent-panel", include_str!("../site/docs/agent-panel.html")),
+    ("agent-runs", include_str!("../site/docs/agent-runs.html")),
     ("claims", include_str!("../site/docs/claims.html")),
     ("team-agent", include_str!("../site/docs/team-agent.html")),
-    ("agent-runs", include_str!("../site/docs/agent-runs.html")),
     ("reference-doc", include_str!("../site/docs/reference-doc.html")),
     ("triage", include_str!("../site/docs/triage.html")),
+    ("previews", include_str!("../site/docs/previews.html")),
+    ("sign-in", include_str!("../site/docs/sign-in.html")),
     ("settings-reference", include_str!("../site/docs/settings-reference.html")),
     ("controls", include_str!("../site/docs/controls.html")),
     ("limits", include_str!("../site/docs/limits.html")),
@@ -402,7 +403,7 @@ mod tests {
         assert_eq!(claims.matches("<article").count(), 1);
         assert!(claims.contains("<title>Function claims | I-IDE Docs</title>"));
         assert!(claims.contains("<a aria-current=\"page\" href=\"/docs/claims\""));
-        assert!(claims.contains("<details open><summary>Work with AI"));
+        assert!(claims.contains("<details open><summary>I-mode extras"));
         assert_eq!(claims.matches("<details open>").count(), 1);
         assert!(!claims.contains("Tutorial: your first team session</h1>"));
         assert!(claims.contains("<small>Previous</small>"));
