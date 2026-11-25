@@ -534,11 +534,30 @@ mod connection_tests {
     async fn a_person_is_gone_only_when_their_last_connection_closes() {
         let hub = Hub::new();
         let _laptop = hub.add_peer("s", "dave").await;
+        // (Connections are counted here; `move_out_others` is what the
+        // socket handler uses to keep one place per person.)
         let _phone = hub.add_peer("s", "dave").await;
         assert!(!hub.remove_peer("s", "dave").await, "one window closed, the other is still open");
         assert_eq!(hub.peer_ids("s").await, vec!["dave".to_string()]);
         assert!(hub.remove_peer("s", "dave").await);
         assert!(hub.peer_ids("s").await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn opening_a_session_in_a_new_window_moves_it_there() {
+        let hub = Hub::new();
+        let mut old_window = hub.add_peer("s", "dave").await;
+        let mut teammate = hub.add_peer("s", "erin").await;
+        let new_window = hub.add_peer("s", "dave").await;
+        assert_eq!(hub.move_out_others("s", "dave", new_window.id).await, 1);
+        // The old window is told, then its connection ends.
+        let told = old_window.rx.recv().await.expect("a message");
+        assert!(matches!(&told, Message::Text(text) if text.contains("moved_elsewhere")));
+        assert!(old_window.rx.recv().await.is_none());
+        // Nobody else is moved, and dave is still here.
+        assert!(teammate.rx.try_recv().is_err());
+        assert_eq!(hub.move_out_others("s", "dave", new_window.id).await, 0);
+        assert!(!hub.remove_peer("s", "dave").await, "the new window is still open");
     }
 }
 
@@ -986,6 +1005,31 @@ impl Hub {
             delivered |= subscriber.tx.send(message.clone()).is_ok();
         }
         delivered
+    }
+
+    /// Tells `user_id`'s other connections to this session that it moved to
+    /// the one with id `keep`, and drops them: each closes once that message
+    /// is sent. Returns how many were moved out.
+    pub async fn move_out_others(&self, session_id: &str, user_id: &str, keep: u64) -> usize {
+        let message = Message::Text(json!({"type": "moved_elsewhere"}).to_string().into());
+        let map = self.inner.read().await;
+        let Some(channel) = map.get(session_id) else {
+            return 0;
+        };
+        let Ok(mut subscribers) = channel.subscribers.lock() else {
+            return 0;
+        };
+        let before = subscribers.len();
+        subscribers.retain(|subscriber| {
+            if subscriber.user_id == user_id && subscriber.id != keep {
+                subscriber.pending.fetch_add(1, Ordering::Relaxed);
+                subscriber.tx.send(message.clone()).ok();
+                false
+            } else {
+                true
+            }
+        });
+        before - subscribers.len()
     }
 
     /// Appends to the session's chat history, dropping the oldest entries
@@ -2122,6 +2166,11 @@ async fn handle_socket(
     branch: Option<String>,
 ) {
     let mut connection = state.hub.add_peer(&session_id, &user_id).await;
+    // One place per person: joining from another window or computer moves
+    // the session there, so nobody shows up twice (or as two leaders).
+    if user_id != AGENT_USER_ID {
+        state.hub.move_out_others(&session_id, &user_id, connection.id).await;
+    }
     if patches {
         state.hub.set_patches(&session_id, connection.id, true).await;
     }
