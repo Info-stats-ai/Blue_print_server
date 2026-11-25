@@ -1166,6 +1166,7 @@ impl Hub {
             .unwrap_or_default()
     }
 
+    /// (See `name_catch_up_lines` for how ids become names.)
     /// Builds a short digest of chat activity `user_id` missed while
     /// disconnected — Phase 7's async catch-up. Deliberately a cheap,
     /// deterministic summary (who said what, most recent first) rather than
@@ -1197,7 +1198,11 @@ impl Hub {
             .rev()
             .take(MAX_DIGEST_MESSAGES)
             .rev()
-            .map(|message| format!("[{}] {}", message.sender, message.text));
+            .map(|message| match (&message.author, message.sender.starts_with("AI (")) {
+                // A teammate's AI answer: whose AI it was.
+                (Some(author), true) => format!("[{author}'s AI] {}", message.text),
+                _ => format!("[{}] {}", message.sender, message.text),
+            });
         let noun = if count == 1 { "message" } else { "messages" };
         Some(format!(
             "{count} {noun} while you were away:\n{}",
@@ -2238,7 +2243,6 @@ async fn handle_socket(
     let decisions = crate::memory::decisions(&state.pool, &session_id).await;
     let context_flags = crate::memory::flags(&state.pool, &session_id).await;
     let claims = state.hub.get_claims(&session_id).await;
-    let catch_up = state.hub.catch_up_digest(&session_id, &user_id).await;
     let presence = state.hub.get_presence(&session_id).await;
     let metrics = state.hub.get_metrics(&session_id).await;
     // (has_leader, owner_id, name) — every peer needs this from the
@@ -2261,6 +2265,19 @@ async fn handle_socket(
     };
 
     let peer_names = member_display_names(&state, &session_id).await;
+    // Who said what while this person was away, by name ("Alice", "Alice's AI").
+    let catch_up = state.hub.catch_up_digest(&session_id, &user_id).await.map(|digest| {
+        // "alice" reads as a name when it looks like one: "Alice".
+        let name = |id: &str| {
+            let name = peer_names.get(id).cloned().unwrap_or_else(|| id.to_string());
+            let mut chars = name.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().chain(chars).collect(),
+                None => name,
+            }
+        };
+        name_catch_up_lines(&digest, &name)
+    });
     let github_repo: Option<String> = sqlx::query_scalar("SELECT github_repo FROM sessions WHERE id = ?")
         .bind(&session_id)
         .fetch_optional(&state.pool)
@@ -4417,6 +4434,47 @@ mod tests {
             hub.get_file("fresh", "a.rs").await,
             Some("fn a() {}".to_string()),
             "channel and its files must still be there — not evicted yet"
+        );
+    }
+}
+
+/// Turns the user ids at the start of catch-up digest lines ("[<id>] …",
+/// "[<id>'s AI] …") into names, so a returning person reads "Alice", not an id.
+fn name_catch_up_lines(digest: &str, name: &dyn Fn(&str) -> String) -> String {
+    digest
+        .lines()
+        .map(|line| {
+            let Some(rest) = line.strip_prefix('[') else {
+                return line.to_string();
+            };
+            let Some((who, text)) = rest.split_once("] ") else {
+                return line.to_string();
+            };
+            let who = match who.strip_suffix("'s AI") {
+                Some(id) => format!("{}'s AI", name(id)),
+                None => name(who),
+            };
+            format!("{who}: {text}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[cfg(test)]
+mod catch_up_name_tests {
+    use super::name_catch_up_lines;
+
+    #[test]
+    fn ids_in_the_away_summary_become_names() {
+        let names = |id: &str| match id {
+            "a1" => "Alice".to_string(),
+            "b2" => "Bob".to_string(),
+            other => other.to_string(),
+        };
+        let digest = "2 messages while you were away:\n[a1] hi\n[a1's AI] Done: added it\n[b2] ok";
+        assert_eq!(
+            name_catch_up_lines(digest, &names),
+            "2 messages while you were away:\nAlice: hi\nAlice's AI: Done: added it\nBob: ok"
         );
     }
 }
