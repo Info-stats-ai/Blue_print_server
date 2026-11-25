@@ -6,6 +6,8 @@
   <li>Choose <strong>Ask</strong>, <strong>Plan</strong> or <strong>Agent</strong> in the mode menu under the message box, or press <kbd>Shift</kbd>+<kbd>Tab</kbd> to move through them.</li>
   <li>Type your request and press <kbd>Return</kbd>.</li>
 </ol>
+<p>The answer appears as it's written, with a line under it saying what your AI is doing, such as <em>Reading src/cart.py</em> or <em>Waiting for your OK to run a command</em>. Its words and steps appear in the order they happen. When it writes code, a card shows the new file or what changed; select the card to open the file. When it runs a command, a card shows what the command printed.</p>
+<p>Your AI here and your AI in the Agent panel know each other's conversations, in every thread, so you can switch between them without repeating yourself. To keep them apart, choose <strong>Work separately</strong> under <strong>AI &amp; sharing</strong> in the people menu.</p>
 <h2>Modes</h2>
 <table><thead><tr><th>Mode</th><th>Use it to</th></tr></thead><tbody>
   <tr><td><strong>Ask</strong></td><td>Get answers about your code.</td></tr>
@@ -77,7 +79,7 @@
   <li>Each check is limited to 20 steps and 45 seconds.</li>
 </ul>
 <h2>Approve commands</h2>
-<p>Commands that only read run without asking: <code>ls</code>, <code>cat</code>, <code>grep</code>, <code>head</code>, <code>tail</code>, <code>wc</code>, <code>find</code> (without <code>-exec</code> or <code>-delete</code>) and Git commands that only look, such as <code>git status</code>, <code>git log</code> and <code>git diff</code>. Anything else, such as a command that writes or deletes files, installs something or runs your code, shows you a card first. Select <strong>Run</strong> to allow it or <strong>Deny</strong> to refuse it. <strong>Always run</strong> lets commands that start the same way, such as <code>python3 -m unittest</code>, run without asking until you close the window.</p>
+<p>Commands that only read run without asking: <code>ls</code>, <code>cat</code>, <code>grep</code>, <code>head</code>, <code>tail</code>, <code>wc</code>, <code>find</code> (without <code>-exec</code> or <code>-delete</code>) and Git commands that only look, such as <code>git status</code>, <code>git log</code> and <code>git diff</code>. Anything else, such as a command that writes or deletes files, installs something or runs your code, shows you a card first. Select <strong>Run</strong> to allow it or <strong>Deny</strong> to refuse it. <strong>Always run</strong> lets commands that start the same way, such as <code>python3 -m unittest</code>, run without asking until you close the window. <strong>Allow all this session</strong> lets every command run without asking until you close the window, except ones that delete files, push, or need admin rights: those still ask.</p>
 <h2 id="sandbox">The sandbox</h2>
 <p>Your AI's commands run in a sandbox, under the same settings as the Agent panel's terminal (<strong>Settings</strong> → <strong>AI</strong>). A command can write only inside your project, and your project's <code>.git</code> folder stays read-only. Network access follows the same settings. If the sandbox can't start, the command doesn't run.</p>
 <h2 id="project-rules">Project rules (AGENTS.md)</h2>
